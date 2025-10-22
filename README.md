@@ -1,4 +1,4 @@
-# Canton ERC-20 Vertical Slice
+# Canton ERC-20
 
 This repo contains a Daml-based ERC‑20 example, a Node.js indexer, and a gRPC middleware prototype. Use the documents below to prepare your environment and launch the stack.
 
