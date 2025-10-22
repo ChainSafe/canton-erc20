@@ -1,0 +1,9 @@
+module ERC20.Types where
+
+data TokenMeta = TokenMeta with
+  name     : Text
+  symbol   : Text
+  decimals : Int
+
+deriving instance Eq TokenMeta
+deriving instance Show TokenMeta

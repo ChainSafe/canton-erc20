@@ -1,0 +1,28 @@
+2025-10-20 13:54:37,911 [main] INFO  c.d.c.e.CommunityEnvironment tid:a89b7080ad60b5fbb7ef53bd48bd3690 - Automatically starting all instances
+2025-10-20 13:54:38,132 [main] ERROR c.d.c.e.CommunityEnvironment tid:a89b7080ad60b5fbb7ef53bd48bd3690 - Failed to start local: Failed to bind to address /127.0.0.1:6868
+2025-10-20 13:56:42,775 [main] INFO  c.d.c.e.CommunityEnvironment tid:86ca77f989d0a65363b3227783fe260d - Automatically starting all instances
+2025-10-20 13:56:43,933 [main] ERROR c.d.c.e.CommunityEnvironment tid:86ca77f989d0a65363b3227783fe260d - Failed to start sandbox: Ledger API server failed to start: FailedToStartLedgerApiServer(
+  com.digitalasset.canton.platform.apiserver.GrpcServer$UnableToBind: The API server was unable to bind to port 6868. Terminate the process occupying the port, or choose a different one.
+Caused by: java.net.BindException: Address already in use
+	at java.base/sun.nio.ch.Net.bind0(Native Method)
+	at java.base/sun.nio.ch.Net.bind(Net.java:522)
+	at java.base/sun.nio.ch.ServerSocketChannelImpl.netBind(ServerSocketChannelImpl.java:335)
+	at java.base/sun.nio.ch.ServerSocketChannelImpl.bind(ServerSocketChannelImpl.java:297)
+	at io.grpc.netty.shaded.io.netty.channel.socket.nio.NioServerSocketChannel.doBind(NioServerSocketChannel.java:141)
+	at io.grpc.netty.shaded.io.netty.channel.AbstractChannel$AbstractUnsafe.bind(AbstractChannel.java:561)
+	at io.grpc.netty.shaded.io.netty.channel.DefaultChannelPipeline$HeadContext.bind(DefaultChannelPipeline.java:1331)
+	at io.grpc.netty.shaded.io.netty.channel.AbstractChannelHandlerContext.invokeBind(AbstractChannelHandlerContext.java:600)
+	at io.grpc.netty.shaded.io.netty.channel.AbstractChannelHandlerContext.bind(AbstractChannelHandlerContext.java:579)
+	at io.grpc.netty.shaded.io.netty.channel.DefaultChannelPipeline.bind(DefaultChannelPipeline.java:972)
+	at io.grpc.netty.shaded.io.netty.channel.AbstractChannel.bind(AbstractChannel.java:259)
+	at io.grpc.netty.shaded.io.netty.bootstrap.AbstractBootstrap$2.run(AbstractBootstrap.java:380)
+	at io.grpc.netty.shaded.io.netty.util.concurrent.AbstractEventExecutor.runTask(AbstractEventExecutor.java:173)
+	at io.grpc.netty.shaded.io.netty.util.concurrent.AbstractEventExecutor.safeExecute(AbstractEventExecutor.java:166)
+	at io.grpc.netty.shaded.io.netty.util.concurrent.SingleThreadEventExecutor.runAllTasks(SingleThreadEventExecutor.java:469)
+	at io.grpc.netty.shaded.io.netty.channel.nio.NioEventLoop.run(NioEventLoop.java:569)
+	at io.grpc.netty.shaded.io.netty.util.concurrent.SingleThreadEventExecutor$4.run(SingleThreadEventExecutor.java:994)
+	at io.grpc.netty.shaded.io.netty.util.internal.ThreadExecutorMap$2.run(ThreadExecutorMap.java:74)
+	at io.grpc.netty.shaded.io.netty.util.concurrent.FastThreadLocalRunnable.run(FastThreadLocalRunnable.java:30)
+	at java.base/java.lang.Thread.run(Thread.java:1474)
+
+)

@@ -1,0 +1,29 @@
+module ERC20.Allowance where
+
+import ERC20.Types
+
+template Allowance
+  with
+    issuer  : Party
+    owner   : Party
+    spender : Party
+    limit   : Decimal
+    meta    : TokenMeta
+  where
+    signatory owner, issuer
+    observer  spender
+
+    choice Decrease : ()
+      with
+        value : Decimal
+      controller owner
+      do
+        assertMsg "value > 0" (value > 0.0)
+        assertMsg "within limit" (value <= limit)
+        archive self
+        if (limit - value) > 0.0
+          then do
+            _ <- create Allowance with issuer, owner, spender, limit = limit - value, meta
+            pure ()
+          else pure ()
+

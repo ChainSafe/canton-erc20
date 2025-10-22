@@ -1,0 +1,21 @@
+{
+  "name": "canton-indexer",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "PORT=9000 node index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "type": "module",
+  "dependencies": {
+    "axios": "^1.12.2",
+    "decimal.js-light": "^2.5.1",
+    "eventsource": "^3.0.7",
+    "express": "^5.1.0"
+  }
+}

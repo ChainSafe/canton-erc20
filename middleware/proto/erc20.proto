@@ -1,0 +1,137 @@
+syntax = "proto3";
+
+package canton.erc20.v1;
+
+option java_package = "com.canton.erc20.v1";
+option java_multiple_files = true;
+
+// -----------------------------------------------------------------------------
+// ERC-20 middleware gRPC definition.
+// -----------------------------------------------------------------------------
+// This service sits between external clients and the Canton ledger. It
+// provides the familiar ERC-20 surface while enforcing Canton’s privacy and
+// authorization requirements.
+service ERC20Service {
+  // Read endpoints ---------------------------------------------------------
+  rpc BalanceOf (BalanceOfRequest) returns (BalanceOfResponse);
+  rpc TotalSupply (TotalSupplyRequest) returns (TotalSupplyResponse);
+  rpc Allowance (AllowanceRequest) returns (AllowanceResponse);
+
+  // Write endpoints --------------------------------------------------------
+  rpc Transfer (TransferRequest) returns (TransferResponse);
+  rpc Approve (ApproveRequest) returns (ApproveResponse);
+  rpc TransferFrom (TransferFromRequest) returns (TransferFromResponse);
+  rpc Mint (MintRequest) returns (MintResponse);
+  rpc Burn (BurnRequest) returns (BurnResponse);
+}
+
+// -----------------------------------------------------------------------------
+// Common value objects
+// -----------------------------------------------------------------------------
+message TokenReference {
+  string symbol = 1;           // e.g. "CCN"
+}
+
+message Amount {
+  string value = 1;            // decimal encoded as string, middleware enforces scale
+}
+
+message Address {
+  string party = 1;            // Canton party identifier or alias resolved server-side
+}
+
+// -----------------------------------------------------------------------------
+// Read request/response messages
+// -----------------------------------------------------------------------------
+message BalanceOfRequest {
+  TokenReference token = 1;
+  Address owner = 2;
+}
+
+message BalanceOfResponse {
+  TokenReference token = 1;
+  Address owner = 2;
+  Amount balance = 3;
+}
+
+message TotalSupplyRequest {
+  TokenReference token = 1;
+}
+
+message TotalSupplyResponse {
+  TokenReference token = 1;
+  Amount total = 2;
+}
+
+message AllowanceRequest {
+  TokenReference token = 1;
+  Address owner = 2;
+  Address spender = 3;
+}
+
+message AllowanceResponse {
+  TokenReference token = 1;
+  Address owner = 2;
+  Address spender = 3;
+  Amount remaining = 4;
+}
+
+// -----------------------------------------------------------------------------
+// Write request/response messages
+// -----------------------------------------------------------------------------
+message TransferRequest {
+  TokenReference token = 1;
+  Address from = 2;            // Must correspond to authenticated caller
+  Address to = 3;
+  Amount amount = 4;
+}
+
+message TransferResponse {
+  string transaction_id = 1;
+}
+
+message ApproveRequest {
+  TokenReference token = 1;
+  Address owner = 2;           // Owner co-signs with issuer
+  Address spender = 3;
+  Amount amount = 4;
+}
+
+message ApproveResponse {
+  string transaction_id = 1;
+}
+
+message TransferFromRequest {
+  TokenReference token = 1;
+  Address spender = 2;         // Authenticated caller
+  Address owner = 3;
+  Address recipient = 4;
+  Amount amount = 5;
+}
+
+message TransferFromResponse {
+  string transaction_id = 1;
+}
+
+message MintRequest {
+  TokenReference token = 1;
+  Address issuer = 2;          // Authenticated caller with mint rights
+  Address recipient = 3;
+  Amount amount = 4;
+}
+
+message MintResponse {
+  string transaction_id = 1;
+}
+
+message BurnRequest {
+  TokenReference token = 1;
+  Address issuer = 2;          // Authenticated caller with burn rights
+  Address holder = 3;
+  Amount amount = 4;
+}
+
+message BurnResponse {
+  string transaction_id = 1;
+}
+

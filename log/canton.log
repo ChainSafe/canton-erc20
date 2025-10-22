@@ -1,0 +1,118 @@
+2025-10-17 15:10:14,167 [main] INFO  c.d.canton.CantonCommunityApp$ - Starting Canton version 2.10.2
+2025-10-17 15:10:14,486 [main] INFO  c.d.canton.CantonCommunityApp$ - Starting up with resolved config:
+domains {
+    local {
+        admin-api {
+            port=6868
+        }
+        init {
+            domain-parameters {
+                protocol-version="7"
+            }
+        }
+        public-api {
+            port=6867
+        }
+        storage {
+            type=memory
+        }
+    }
+}
+parameters {
+    dev-version-support=true
+    non-standard-config=true
+    ports-file="/var/folders/3b/5px2ncd52yj2hvq5g7jzmfs80000gn/T/extra-dir-48995731268/canton-portfile.json"
+}
+participants {
+    sandbox {
+        admin-api {
+            port=6866
+        }
+        ledger-api {
+            port=6865
+            user-management-service {
+                enabled=true
+            }
+        }
+        parameters {
+            dev-version-support=true
+        }
+        storage {
+            type=memory
+        }
+    }
+}
+
+2025-10-17 15:10:14,496 [main] INFO  c.d.c.e.CommunityEnvironment - Deriving 11 as number of threads from 'sys.runtime.availableProcessors()'. Please use '-Dscala.concurrent.context.numThreads' to override.
+2025-10-17 15:10:14,582 [canton-env-ec-41] INFO  o.a.pekko.event.slf4j.Slf4jLogger - Slf4jLogger started
+2025-10-17 15:10:14,608 [main] INFO  c.d.c.t.OpenTelemetryFactory$ - Initializing open telemetry with Exporter.Disabled
+2025-10-17 15:10:14,632 [main] INFO  c.d.c.e.CommunityEnvironment tid:98b6ba648950b4a003dae3d3a92c8126 - Automatically starting all instances
+2025-10-17 15:10:14,711 [canton-env-ec-41] INFO  c.d.c.crypto.Crypto:domain=local - 'crypto' is now in state Ok(). Previous state was Not Initialized.
+2025-10-17 15:10:14,719 [canton-env-ec-45] INFO  c.d.c.d.DomainNodeBootstrap:domain=local - Starting admin-api services on CommunityAdminServerConfig(127.0.0.1,Some(6868),None,Some(BasicKeepAliveServerConfig(40s,20s,20s,false)),10485760,List(),None)
+2025-10-17 15:10:14,738 [canton-env-ec-41] INFO  c.d.c.c.Crypto:participant=sandbox - 'crypto' is now in state Ok(). Previous state was Not Initialized.
+2025-10-17 15:10:14,739 [canton-env-ec-44] INFO  c.d.c.p.ParticipantNodeBootstrap:participant=sandbox - Starting admin-api services on CommunityAdminServerConfig(127.0.0.1,Some(6866),None,Some(BasicKeepAliveServerConfig(40s,20s,20s,false)),10485760,List(),None)
+2025-10-17 15:10:14,848 [main] ERROR c.d.c.e.CommunityEnvironment tid:98b6ba648950b4a003dae3d3a92c8126 - Failed to start local: Failed to bind to address /127.0.0.1:6868
+2025-10-17 15:10:14,850 [Thread-0] INFO  c.d.canton.CantonCommunityApp$ - Shutting down...
+2025-10-17 15:10:14,851 [Thread-0] INFO  c.d.c.e.CommunityEnvironment - Closing environment...
+2025-10-17 15:10:14,864 [canton-env-ec-54] INFO  o.a.pekko.actor.CoordinatedShutdown - Running CoordinatedShutdown with reason [ActorSystemTerminateReason]
+2025-10-17 15:10:14,877 [Thread-0] INFO  c.d.canton.CantonCommunityApp$ - Shutdown complete.
+2025-10-17 15:10:14,877 [Thread-0] INFO  c.d.canton.CantonCommunityApp$ - Shutting down logger. Bye bye.
+2025-10-17 15:12:18,245 [main] INFO  c.d.canton.CantonCommunityApp$ - Starting Canton version 2.10.2
+2025-10-17 15:12:18,553 [main] INFO  c.d.canton.CantonCommunityApp$ - Starting up with resolved config:
+domains {
+    local {
+        admin-api {
+            port=19001
+        }
+        init {
+            domain-parameters {
+                protocol-version="7"
+            }
+        }
+        public-api {
+            port=19000
+        }
+        storage {
+            type=memory
+        }
+    }
+}
+parameters {
+    dev-version-support=true
+    non-standard-config=true
+    ports-file="/var/folders/3b/5px2ncd52yj2hvq5g7jzmfs80000gn/T/extra-dir-86484873368/canton-portfile.json"
+}
+participants {
+    sandbox {
+        admin-api {
+            port=19002
+        }
+        ledger-api {
+            port=6865
+            user-management-service {
+                enabled=true
+            }
+        }
+        parameters {
+            dev-version-support=true
+        }
+        storage {
+            type=memory
+        }
+    }
+}
+
+2025-10-17 15:12:18,561 [main] INFO  c.d.c.e.CommunityEnvironment - Deriving 11 as number of threads from 'sys.runtime.availableProcessors()'. Please use '-Dscala.concurrent.context.numThreads' to override.
+2025-10-17 15:12:18,647 [canton-env-ec-40] INFO  o.a.pekko.event.slf4j.Slf4jLogger - Slf4jLogger started
+2025-10-17 15:12:18,673 [main] INFO  c.d.c.t.OpenTelemetryFactory$ - Initializing open telemetry with Exporter.Disabled
+2025-10-17 15:12:18,697 [main] INFO  c.d.c.e.CommunityEnvironment tid:36f5020ebad4ef90085e36a10e9afad9 - Automatically starting all instances
+2025-10-17 15:12:18,771 [canton-env-ec-41] INFO  c.d.c.crypto.Crypto:domain=local - 'crypto' is now in state Ok(). Previous state was Not Initialized.
+2025-10-17 15:12:18,778 [canton-env-ec-47] INFO  c.d.c.d.DomainNodeBootstrap:domain=local - Starting admin-api services on CommunityAdminServerConfig(127.0.0.1,Some(19001),None,Some(BasicKeepAliveServerConfig(40s,20s,20s,false)),10485760,List(),None)
+2025-10-17 15:12:18,794 [canton-env-ec-41] INFO  c.d.c.c.Crypto:participant=sandbox - 'crypto' is now in state Ok(). Previous state was Not Initialized.
+2025-10-17 15:12:18,795 [canton-env-ec-40] INFO  c.d.c.p.ParticipantNodeBootstrap:participant=sandbox - Starting admin-api services on CommunityAdminServerConfig(127.0.0.1,Some(19002),None,Some(BasicKeepAliveServerConfig(40s,20s,20s,false)),10485760,List(),None)
+2025-10-17 15:12:18,899 [main] ERROR c.d.c.e.CommunityEnvironment tid:36f5020ebad4ef90085e36a10e9afad9 - Failed to start local: Failed to bind to address /127.0.0.1:19001
+2025-10-17 15:12:18,900 [Thread-0] INFO  c.d.canton.CantonCommunityApp$ - Shutting down...
+2025-10-17 15:12:18,901 [Thread-0] INFO  c.d.c.e.CommunityEnvironment - Closing environment...
+2025-10-17 15:12:18,913 [canton-env-ec-50] INFO  o.a.pekko.actor.CoordinatedShutdown - Running CoordinatedShutdown with reason [ActorSystemTerminateReason]
+2025-10-17 15:12:18,931 [Thread-0] INFO  c.d.canton.CantonCommunityApp$ - Shutdown complete.
+2025-10-17 15:12:18,932 [Thread-0] INFO  c.d.canton.CantonCommunityApp$ - Shutting down logger. Bye bye.

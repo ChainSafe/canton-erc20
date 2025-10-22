@@ -1,0 +1,74 @@
+module ERC20.Inspect where
+
+import Daml.Script
+import ERC20.Types
+import ERC20.Token
+
+-- Sum helper over (ContractId, TokenHolding) pairs
+sumHoldings : [(ContractId TokenHolding, TokenHolding)] -> Decimal
+sumHoldings hs = foldl (\acc (_, h) -> acc + h.amount) 0.0 hs
+
+ensureParty : Text -> PartyIdHint -> Script Party
+ensureParty name hint = do
+  ps <- listKnownParties
+  case [ p.party | p <- ps, p.displayName == Some name ] of
+    p :: _ -> pure p
+    []     -> allocatePartyWithHint name hint
+
+findTokenManager : Party -> Script (Optional (ContractId TokenManager, TokenManager))
+findTokenManager viewer = do
+  ms <- query @TokenManager viewer
+  case ms of
+    (cid, m) :: _ -> pure (Some (cid, m))
+    []            -> pure None
+
+ensureTokenManager : Party -> TokenMeta -> Script (ContractId TokenManager)
+ensureTokenManager issuer meta = do
+  existing <- findTokenManager issuer
+  case existing of
+    Some (cid, _) -> pure cid
+    None -> submit issuer do createCmd TokenManager with issuer, meta
+
+ensureAliceBalance : Party -> Party -> Decimal -> ContractId TokenManager -> Script ()
+ensureAliceBalance issuer alice need tmCid = do
+  issuerView <- query @TokenHolding issuer
+  let current = sumHoldings (filter (\(_, h) -> h.owner == alice) issuerView)
+  if current < need then
+    do
+      _ <- submit issuer do
+        exerciseCmd tmCid Mint with to = alice, amount = need - current
+      pure ()
+  else pure ()
+
+ensureTransfer : Party -> Party -> Decimal -> Script ()
+ensureTransfer alice bob value = do
+  holdings <- query @TokenHolding alice
+  case [ (cid, h) | (cid, h) <- holdings, h.owner == alice, h.amount >= value ] of
+    (cid, _) :: _ ->
+      do
+        _ <- submit alice do
+          exerciseCmd cid Transfer with to = bob, value
+        pure ()
+    [] -> pure ()
+
+balancesOk : Script ()
+balancesOk = script do
+  issuer <- ensureParty "Issuer" (PartyIdHint "issuer")
+  alice  <- ensureParty "Alice"  (PartyIdHint "alice")
+  bob    <- ensureParty "Bob"    (PartyIdHint "bob")
+
+  let meta = TokenMeta with name = "Canton Coin", symbol = "CCN", decimals = 6
+  tmCid <- ensureTokenManager issuer meta
+
+  ensureAliceBalance issuer alice 100.0 tmCid
+  ensureTransfer alice bob 30.0
+
+  issuerView <- query @TokenHolding issuer
+  let aliceBal = sumHoldings (filter (\(_, h) -> h.owner == alice) issuerView)
+  let bobBal   = sumHoldings (filter (\(_, h) -> h.owner == bob) issuerView)
+
+  debug ("Issuer-visible totals — Alice: " <> show aliceBal <> ", Bob: " <> show bobBal)
+
+  assertMsg "Alice has at least 70" (aliceBal >= 70.0)
+  assertMsg "Bob has at least 30"   (bobBal   >= 30.0)
+  pure ()
