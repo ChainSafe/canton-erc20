@@ -1,0 +1,14 @@
+# Build artefacts
+.daml/
+log/
+
+# Node dependencies
+node_modules/
+
+# Environment files
+dev-env.sh
+
+# OS / editor noise
+.DS_Store
+.idea/
+*.log
