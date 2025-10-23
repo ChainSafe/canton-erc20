@@ -1,0 +1,5 @@
+# Generated code (run scripts/gen-ledger.sh)
+/gen/
+/.gomodcache/
+/.gocache/
+/vendor/

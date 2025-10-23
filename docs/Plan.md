@@ -217,7 +217,7 @@ service ERC20 {
 # 5. Deployment & DevOps
 
 - Containerization: multi-stage Dockerfiles for indexer & middleware; pinned base images.
-- Local stack: docker-compose with Canton participant, JSON API, Postgres, indexer, middleware.
+  - Local stack: docker-compose with Canton participant, indexer (Go), middleware, and optional Postgres.
 - Production IaC: Helm charts / Terraform for participant onboarding, database provisioning, app deployment.
 - Secrets management: integrate with Vault / AWS Secrets Manager for API tokens, DB creds.
 - CI/CD pipeline:
@@ -249,10 +249,10 @@ repo/
 ├─ daml/
 │   ├─ daml.yaml
 │   └─ ERC20/*.daml
-├─ indexer/
-│   ├─ src/ (Node)
-│   ├─ migrations/...
-│   ├─ Dockerfile
+├─ indexer-go/
+│   ├─ cmd/
+│   ├─ internal/
+│   ├─ proto/
 │   └─ README.md
 ├─ middleware/
 │   ├─ src/
@@ -272,7 +272,7 @@ repo/
 # 7. Phased Implementation Plan
 
 1. **Ledger & Daml** – finalize templates, invariants, scripts; document party topology.
-2. **Indexer Phase 1** – gRPC connector, Postgres persistence, read API, JSON API fallback for dev.
+2. **Indexer Phase 1** – gRPC connector, Postgres persistence, read API.
 3. **Middleware Phase 1** – gRPC ERC‑20 interface, BalanceOf/Totals wired to indexer, command submission skeleton.
 4. **Security Hardening** – TLS/mTLS, service identities, OIDC/JWT integration, RBAC.
 5. **Indexer Phase 2** – advanced projections (history tables), caching, scaling strategies, multi-domain support.
