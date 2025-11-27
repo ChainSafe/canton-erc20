@@ -1,0 +1,137 @@
+module Bridge.Script where
+
+import Daml.Script
+import Common.Types
+import CIP56.Token
+import Bridge.Contracts
+
+-- Test bridge flow: EVM deposit → Canton mint → Canton burn → EVM release
+-- Note: In this simplified flow, the issuer also acts as the bridge operator
+-- In production, more sophisticated authorization patterns would be used
+testBridgeFlow : Script ()
+testBridgeFlow = script do
+  -- Allocate parties
+  -- For Phase 0, issuer and operator are the same party for simplicity
+  -- This will be refactored in Phase 1 with proper multi-party authorization
+  issuerOperator <- allocateParty "IssuerOperator"
+  alice <- allocateParty "Alice"
+
+  -- Create token manager with extended metadata
+  let meta = ExtendedMetadata with
+        name = "USD Coin"
+        symbol = "USDC"
+        decimals = 6
+        isin = Some "US1234567890"
+        dtiCode = Some "DTI-USDC"
+        regulatoryInfo = Some "SEC Registered"
+
+  tokenManagerCid <- submit issuerOperator $ createCmd CIP56Manager with
+    issuer = issuerOperator
+    meta = meta
+
+  -- Simulate EVM deposit event (operator proposes mint)
+  let evmTxHash = "0xabc123def456"
+  let source = ChainRef with
+        chainName = "Ethereum"
+        eventId = evmTxHash
+
+  proposalCid <- submit issuerOperator $ createCmd MintProposal with
+    operator = issuerOperator
+    issuer = issuerOperator
+    recipient = alice
+    tokenManagerCid = tokenManagerCid
+    amount = 1000.0
+    reference = evmTxHash
+    source = source
+
+  -- Alice accepts the proposal
+  authCid <- submit alice $ exerciseCmd proposalCid Accept
+
+  -- Operator (who is also issuer) executes the mint
+  holdingCid <- submit issuerOperator $ exerciseCmd authCid MintOnCanton
+
+  -- Verify Alice received the tokens
+  Some holding <- queryContractId alice holdingCid
+  assertMsg "Alice owns tokens" (holding.owner == alice)
+  assertMsg "Amount is correct" (holding.amount == 1000.0)
+
+  -- WITHDRAWAL FLOW: Lock -> RedeemRequest -> Burn
+  
+  -- 1. Alice locks funds for Operator
+  (lockedCid, _) <- submit alice do
+    exerciseCmd holdingCid Lock with
+      receiver = issuerOperator
+      value = 1000.0
+      complianceRulesCid = None
+
+  -- 2. Alice requests redemption
+  let evmDest = EvmAddress "0xAliceEthAddress"
+  let redeemRef = "red-001"
+  
+  redeemRequestCid <- submit alice do
+    createCmd RedeemRequest with
+      owner = alice
+      operator = issuerOperator
+      issuer = issuerOperator
+      tokenManagerCid = tokenManagerCid
+      lockedAssetCid = lockedCid
+      amount = 1000.0
+      destination = evmDest
+      reference = redeemRef
+
+  -- 3. Operator approves burn
+  burnEventCid <- submit issuerOperator do
+    exerciseCmd redeemRequestCid ApproveBurn
+
+  debug "✓ Bridge flow test completed successfully!"
+  pure ()
+
+-- Test basic CIP56 token operations without bridge
+testBasicToken : Script ()
+testBasicToken = script do
+  issuer <- allocateParty "Issuer"
+  alice <- allocateParty "Alice"
+  bob <- allocateParty "Bob"
+
+  let meta = ExtendedMetadata with
+        name = "Test Token"
+        symbol = "TEST"
+        decimals = 18
+        isin = None
+        dtiCode = None
+        regulatoryInfo = None
+
+  -- Create token manager
+  tokenManagerCid <- submit issuer $ createCmd CIP56Manager with
+    issuer = issuer
+    meta = meta
+
+  -- Mint tokens to Alice
+  aliceHoldingCid <- submit issuer $ exerciseCmd tokenManagerCid Mint with
+    to = alice
+    amount = 500.0
+
+  -- Verify Alice's balance
+  Some aliceHolding <- queryContractId alice aliceHoldingCid
+  assertMsg "Alice has correct amount" (aliceHolding.amount == 500.0)
+
+  -- Alice transfers to Bob
+  (bobHoldingCid, maybeChange) <- submit alice $ exerciseCmd aliceHoldingCid Transfer with
+    to = bob
+    value = 200.0
+    complianceRulesCid = None
+    complianceProofCid = None
+
+  -- Verify Bob received tokens
+  Some bobHolding <- queryContractId bob bobHoldingCid
+  assertMsg "Bob has correct amount" (bobHolding.amount == 200.0)
+
+  -- Verify Alice has change
+  case maybeChange of
+    Some changeCid -> do
+      Some change <- queryContractId alice changeCid
+      assertMsg "Alice has correct change" (change.amount == 300.0)
+    None -> fail "Expected Alice to have change"
+
+  debug "✓ Basic token test completed successfully!"
+  pure ()

@@ -1,0 +1,12 @@
+name: cip56-token
+version: 1.0.0
+sdk-version: 2.10.2
+
+source: src
+dependencies:
+  - daml-prim
+  - daml-stdlib
+  - daml-script
+
+data-dependencies:
+  - ../common/.daml/dist/common-1.0.0.dar

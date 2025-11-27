@@ -1,0 +1,4 @@
+module CIP56.Transfer where
+
+-- Transfer module now deprecated/empty as LockedAsset moved to Token.daml to avoid cycles
+-- Kept for backward compatibility if needed or future expansion
