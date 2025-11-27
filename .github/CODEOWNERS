@@ -1,0 +1,28 @@
+# CODEOWNERS - Define code ownership for review requirements
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owners for everything in the repo
+*                               @your-org/canton-bridge-team
+
+# Core infrastructure - requires senior review
+/daml/common/                   @your-org/canton-bridge-leads
+/daml/cip56-token/              @your-org/canton-bridge-leads
+/daml/bridge-core/              @your-org/canton-bridge-leads
+
+# Client-specific bridges - can be owned by client teams
+/daml/bridge-wayfinder/         @your-org/wayfinder-team
+/daml/bridge-usdc/              @your-org/usdc-team
+/daml/bridge-cbtc/              @your-org/cbtc-team
+/daml/bridge-generic/           @your-org/canton-bridge-team
+
+# Documentation
+/docs/                          @your-org/canton-bridge-team
+*.md                            @your-org/canton-bridge-team
+
+# Build and CI/CD
+/scripts/                       @your-org/devops-team
+/.github/                       @your-org/devops-team
+
+# Security-sensitive files
+/daml/*/src/**/Compliance.daml  @your-org/security-team @your-org/canton-bridge-leads
+
