@@ -1,4 +1,0 @@
-2025-10-17 15:10:14,632 [main] INFO  c.d.c.e.CommunityEnvironment tid:98b6ba648950b4a003dae3d3a92c8126 - Automatically starting all instances
-2025-10-17 15:10:14,848 [main] ERROR c.d.c.e.CommunityEnvironment tid:98b6ba648950b4a003dae3d3a92c8126 - Failed to start local: Failed to bind to address /127.0.0.1:6868
-2025-10-17 15:12:18,697 [main] INFO  c.d.c.e.CommunityEnvironment tid:36f5020ebad4ef90085e36a10e9afad9 - Automatically starting all instances
-2025-10-17 15:12:18,899 [main] ERROR c.d.c.e.CommunityEnvironment tid:36f5020ebad4ef90085e36a10e9afad9 - Failed to start local: Failed to bind to address /127.0.0.1:19001
