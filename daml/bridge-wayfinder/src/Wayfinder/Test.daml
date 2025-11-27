@@ -1,0 +1,172 @@
+module Wayfinder.Test where
+
+import Daml.Script
+import Common.Types
+import CIP56.Token
+import Bridge.Contracts
+import Wayfinder.Bridge
+
+-- | Helper to allocate parties with readable names
+setupParties : Script (Party, Party, Party)
+setupParties = do
+  operator <- allocatePartyWithHint "WayfinderOperator" (PartyIdHint "operator")
+  alice <- allocatePartyWithHint "Alice" (PartyIdHint "alice")
+  bob <- allocatePartyWithHint "Bob" (PartyIdHint "bob")
+  return (operator, alice, bob)
+
+-- | Full end-to-end test cycle for Wayfinder PRIME Bridge
+--
+-- This script tests the entire lifecycle of bridging PRIME tokens:
+-- 1. Initialization: Operator sets up the Token Manager and Bridge Config.
+-- 2. Deposit (EVM -> Canton):
+--    - Operator proposes a mint (representing a lock on Ethereum).
+--    - User (Alice) accepts the proposal.
+--    - Wrapped PRIME tokens are minted on Canton.
+-- 3. Transfer (Canton):
+--    - Alice transfers some PRIME to Bob to verify token mechanics.
+-- 4. Withdrawal (Canton -> EVM):
+--    - Bob requests redemption (bridging back to Ethereum).
+--    - This involves Locking the asset -> Creating RedeemRequest -> Operator Burning.
+-- 5. Verification:
+--    - Confirm BurnEvent is emitted with correct details for the relayer.
+testWayfinderBridge : Script ()
+testWayfinderBridge = script do
+  -- ===========================================================================
+  -- 1. INITIALIZATION
+  -- ===========================================================================
+  (operator, alice, bob) <- setupParties
+  
+  debug ">>> 1. Initialization: Deploying contracts..."
+
+  -- Operator deploys the Token Manager for the wrapped PRIME token
+  tokenManagerCid <- submit operator do
+    createCmd CIP56Manager with
+      issuer = operator
+      meta = primeMetadata
+
+  -- Operator deploys the Bridge Configuration
+  configCid <- submit operator do
+    createCmd WayfinderBridgeConfig with
+      operator = operator
+      tokenManagerCid = tokenManagerCid
+
+  debug "    ✓ Token Manager and Bridge Config deployed."
+
+  -- ===========================================================================
+  -- 2. DEPOSIT FLOW (Ethereum -> Canton)
+  -- ===========================================================================
+  debug ">>> 2. Deposit Flow: Bridging 100.0 PRIME from Ethereum to Alice..."
+
+  -- Simulate: Operator detects a Deposit event on Ethereum (tx hash: 0x123...)
+  let ethTxHash = "0x1234567890abcdef..."
+  let depositAmount = 100.0
+
+  -- Step 2a: Operator creates a Mint Proposal on Canton
+  proposalCid <- submit operator do
+    exerciseCmd configCid CreateMintProposal with
+      recipient = alice
+      amount = depositAmount
+      txHash = ethTxHash
+
+  -- Step 2b: Alice accepts the proposal (Compliance / Authorization check)
+  -- This creates a MintAuthorization contract
+  authCid <- submit alice do
+    exerciseCmd proposalCid Accept
+
+  -- Step 2c: Operator executes the minting
+  aliceHoldingCid <- submit operator do
+    exerciseCmd authCid MintOnCanton
+
+  -- Verify Alice's balance
+  Some aliceHolding <- queryContractId alice aliceHoldingCid
+  assertMsg "Alice should have 100.0 PRIME" (aliceHolding.amount == 100.0)
+  assertMsg "Token symbol should be PRIME" (aliceHolding.meta.symbol == "PRIME")
+  
+  debug "    ✓ Deposit complete. Alice holds 100.0 PRIME."
+
+  -- ===========================================================================
+  -- 3. TRANSFER (Canton Native)
+  -- ===========================================================================
+  debug ">>> 3. Native Transfer: Alice transfers 40.0 PRIME to Bob..."
+
+  -- Alice transfers 40.0 to Bob
+  (bobHoldingCid, maybeAliceChangeCid) <- submit alice do
+    exerciseCmd aliceHoldingCid Transfer with
+      to = bob
+      value = 40.0
+      complianceRulesCid = None -- No extra compliance rules for this test
+      complianceProofCid = None
+
+  -- Verify Bob's balance
+  Some bobHolding <- queryContractId bob bobHoldingCid
+  assertMsg "Bob should have 40.0 PRIME" (bobHolding.amount == 40.0)
+
+  -- Verify Alice's change
+  case maybeAliceChangeCid of
+    Some changeCid -> do
+      Some change <- queryContractId alice changeCid
+      assertMsg "Alice should have 60.0 PRIME remaining" (change.amount == 60.0)
+    None -> fail "Alice should have received change"
+
+  debug "    ✓ Transfer successful."
+
+  -- ===========================================================================
+  -- 4. WITHDRAWAL FLOW (Canton -> Ethereum)
+  -- ===========================================================================
+  debug ">>> 4. Withdrawal Flow: Bob bridges 40.0 PRIME back to Ethereum..."
+
+  let evmDestination = EvmAddress "0xBobEthAddress..."
+  let redemptionRef = "req-bridge-back-001"
+
+  -- Step 4a: Bob locks his funds for the Operator
+  -- This moves funds from CIP56Holding to LockedAsset
+  (lockedAssetCid, _) <- submit bob do
+    exerciseCmd bobHoldingCid Lock with
+      receiver = operator
+      value = 40.0
+      complianceRulesCid = None
+
+  -- Step 4b: Bob creates a Redeem Request pointing to the locked asset
+  redeemRequestCid <- submit bob do
+    createCmd RedeemRequest with
+      owner = bob
+      operator = operator
+      issuer = operator
+      tokenManagerCid = tokenManagerCid
+      lockedAssetCid = lockedAssetCid
+      amount = 40.0
+      destination = evmDestination
+      reference = redemptionRef
+
+  -- Step 4c: Operator processes the redemption (Approved Burn)
+  -- This claims the LockedAsset (CompleteTransfer) and immediately Burns it
+  
+  -- IMPORTANT: Ensure redeemRequestCid is the correct contract ID and accessible
+  -- There was previously a ContractNotActive error here.
+  -- Possible cause: `RedeemRequest` creation logic or `ApproveBurn` consumption.
+  -- `ApproveBurn` consumes `RedeemRequest`. It also consumes `LockedAsset` (via CompleteTransfer)
+  -- and `CIP56Holding` (via Burn). All should be active at this point.
+  
+  burnEventCid <- submit operator do
+    exerciseCmd redeemRequestCid ApproveBurn
+
+  debug "    ✓ Redemption processed on Canton."
+
+  -- ===========================================================================
+  -- 5. VERIFICATION
+  -- ===========================================================================
+  debug ">>> 5. Final Verification..."
+
+  -- Verify the BurnEvent was emitted with correct details
+  -- The Middleware will listen for this event to unlock/mint on Ethereum
+  Some burnEvent <- queryContractId operator burnEventCid
+  
+  assertMsg "Burn amount matches request" (burnEvent.amount == 40.0)
+  assertMsg "Burn destination matches request" (burnEvent.destination == evmDestination)
+  assertMsg "Burn operator is correct" (burnEvent.operator == operator)
+  assertMsg "Burn owner is correct" (burnEvent.owner == bob)
+
+  debug "    ✓ BurnEvent confirmed correct."
+  debug ">>> Test Cycle Complete Successfully!"
+  
+  pure ()
