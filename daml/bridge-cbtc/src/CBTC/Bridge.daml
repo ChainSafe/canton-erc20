@@ -1,0 +1,21 @@
+module CBTC.Bridge where
+
+-- CBTC (Canton BTC) bridge implementation
+-- To be implemented in Phase 4 (Week 11-12)
+--
+-- This module will include:
+-- - BitSafe vault integration
+-- - CBTC-specific deposit/withdrawal workflows
+-- - Custody patterns
+-- - Vault authorization templates
+
+import Common.Types
+
+-- Placeholder for CBTC bridge configuration
+data CBTCBridgeConfig = CBTCBridgeConfig with
+  operator      : Party
+  vaultAddress  : Text
+  minAmount     : Decimal
+  maxAmount     : Decimal
+    deriving (Eq, Show)
+

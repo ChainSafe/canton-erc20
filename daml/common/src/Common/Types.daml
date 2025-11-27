@@ -1,0 +1,50 @@
+module Common.Types where
+
+-- Token metadata (from ERC20.Types)
+data TokenMeta = TokenMeta with
+  name     : Text
+  symbol   : Text
+  decimals : Int
+    deriving (Eq, Show)
+
+-- Chain reference for cross-chain events
+data ChainRef = ChainRef with
+  chainName : Text
+  eventId   : Text
+    deriving (Eq, Show)
+
+-- Bridge direction
+data BridgeDirection = ToCanton | ToEvm
+  deriving (Eq, Show)
+
+-- EVM address type
+newtype EvmAddress = EvmAddress with
+  value : Text
+    deriving (Eq, Show)
+
+-- Extended metadata for CIP-56 compliance
+data ExtendedMetadata = ExtendedMetadata with
+  name           : Text
+  symbol         : Text
+  decimals       : Int
+  isin           : Optional Text
+  dtiCode        : Optional Text
+  regulatoryInfo : Optional Text
+    deriving (Eq, Show)
+
+-- Convert basic to extended metadata
+toExtendedMetadata : TokenMeta -> ExtendedMetadata
+toExtendedMetadata tm = ExtendedMetadata with
+  name           = tm.name
+  symbol         = tm.symbol
+  decimals       = tm.decimals
+  isin           = None
+  dtiCode        = None
+  regulatoryInfo = None
+
+-- Convert extended to basic metadata
+toBasicMetadata : ExtendedMetadata -> TokenMeta
+toBasicMetadata em = TokenMeta with
+  name     = em.name
+  symbol   = em.symbol
+  decimals = em.decimals

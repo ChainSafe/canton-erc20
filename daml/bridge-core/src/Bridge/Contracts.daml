@@ -1,0 +1,109 @@
+module Bridge.Contracts where
+
+import Common.Types
+import CIP56.Token
+
+-- Mint proposal for bridging tokens from EVM to Canton
+template MintProposal
+  with
+    operator        : Party
+    issuer          : Party
+    recipient       : Party
+    tokenManagerCid : ContractId CIP56Manager
+    amount          : Decimal
+    reference       : Text -- external transaction reference (e.g., EVM tx hash)
+    source          : ChainRef
+  where
+    signatory operator
+    observer recipient
+
+    key (operator, reference) : (Party, Text)
+    maintainer key._1
+
+    choice Accept : ContractId MintAuthorization
+      controller recipient
+      do
+        -- Choice is consuming, so contract is automatically archived
+        create MintAuthorization with operator, issuer, recipient, tokenManagerCid, amount, reference, source
+
+-- Authorization for minting (after recipient accepts)
+template MintAuthorization
+  with
+    operator        : Party
+    issuer          : Party
+    recipient       : Party
+    tokenManagerCid : ContractId CIP56Manager
+    amount          : Decimal
+    reference       : Text
+    source          : ChainRef
+  where
+    signatory operator, recipient
+
+    key (operator, reference) : (Party, Text)
+    maintainer key._1
+
+    choice MintOnCanton : ContractId CIP56Holding
+      controller operator
+      do
+        assertMsg "amount > 0" (amount > 0.0)
+        -- Choice is consuming, so contract is automatically archived
+        exercise tokenManagerCid Mint with
+          to     = recipient
+          amount = amount
+
+-- Locked asset for redemption (Created by User, Locks the Holding)
+template RedeemRequest
+  with
+    owner           : Party
+    operator        : Party
+    issuer          : Party
+    tokenManagerCid : ContractId CIP56Manager
+    lockedAssetCid  : ContractId LockedAsset
+    amount          : Decimal
+    destination     : EvmAddress
+    reference       : Text
+  where
+    signatory owner
+    observer operator
+
+    key (reference, owner) : (Text, Party)
+    maintainer key._2
+
+    choice ApproveBurn : ContractId BurnEvent
+      controller operator
+      do
+        lockedAsset <- fetch lockedAssetCid
+        assertMsg "owner matches request" (lockedAsset.sender == owner)
+        assertMsg "amount matches request" (lockedAsset.amount == amount)
+        
+        -- Burn the locked asset (CompleteTransfer -> Holding -> Burn? No, that unlocks it first)
+        -- We need a way to BURN a LockedAsset directly or unlock-and-burn atomically.
+        -- Since LockedAsset is in CIP56.Token, we can't modify it easily here without circular deps?
+        -- Wait, CIP56.Token imports nothing from Bridge.Contracts.
+        -- LockedAsset has `Unlock` (refund) and `CompleteTransfer` (deliver).
+        -- We need a `Burn` choice on LockedAsset? Or unlock it to Operator then Operator burns it?
+        
+        -- Pattern:
+        -- 1. User Locks asset for Operator.
+        -- 2. User creates RedeemRequest pointing to LockedAsset.
+        -- 3. Operator exercises `CompleteTransfer` on LockedAsset (claiming it).
+        -- 4. Operator exercises `Burn` on the resulting Holding.
+        
+        holdingCid <- exercise lockedAssetCid CompleteTransfer with complianceProofCid = None
+        exercise tokenManagerCid Burn with holdingCid = holdingCid
+        
+        -- Choice is consuming, so contract is automatically archived
+        create BurnEvent with operator, owner, destination, amount, reference, direction = ToEvm
+
+-- Event emitted after burn (for middleware to process on EVM side)
+template BurnEvent
+  with
+    operator    : Party
+    owner       : Party
+    destination : EvmAddress
+    amount      : Decimal
+    reference   : Text
+    direction   : BridgeDirection
+  where
+    signatory operator
+    observer owner

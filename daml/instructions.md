@@ -77,6 +77,18 @@ daml script \
 
 You can add additional Daml scripts (e.g. to mint, transfer, or inspect balances) and run them the same way. The Go indexer will pick up changes automatically via the transaction stream.
 
+### Bridge-specific script (no middleware)
+
+Run the bridge handshake (EV M → Canton mint + Canton → EVM burn intent) entirely on-ledger:
+
+```bash
+daml script \
+  --ledger-host localhost \
+  --ledger-port ${SANDBOX_PORT} \
+  --dar ./.daml/dist/erc20-canton-0.0.1.dar \
+  --script-name Bridge.Script:bridgeFlow
+```
+
 ## 6. Shutdown
 
 - Ctrl+C in the indexer and middleware terminals.

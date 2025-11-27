@@ -1,0 +1,78 @@
+module CIP56.Script where
+
+import Daml.Script
+import Common.Types
+import CIP56.Token
+import CIP56.Compliance
+
+ensureParty : Text -> PartyIdHint -> Script Party
+ensureParty displayName hint = do
+  known <- listKnownParties
+  case [ p.party | p <- known, p.displayName == Some displayName ] of
+    p :: _ -> pure p
+    []     -> allocatePartyWithHint displayName hint
+
+test : Script ()
+test = script do
+  issuer <- ensureParty "Issuer" (PartyIdHint "issuer")
+  alice  <- ensureParty "Alice"  (PartyIdHint "alice")
+  bob    <- ensureParty "Bob"    (PartyIdHint "bob")
+
+  let meta = ExtendedMetadata with 
+        name = "Canton Coin"
+        symbol = "CCN"
+        decimals = 6
+        isin = None
+        dtiCode = None
+        regulatoryInfo = None
+
+  -- Setup Compliance
+  rulesCid <- submit issuer do
+    createCmd ComplianceRules with
+      issuer = issuer
+      isWhitelistEnabled = True
+      observers = [alice, bob]
+
+  -- Issue proofs to Alice and Bob
+  aliceProofCid <- submit issuer do
+    createCmd ComplianceProof with issuer, user = alice
+
+  bobProofCid <- submit issuer do
+    createCmd ComplianceProof with issuer, user = bob
+
+  tmCid <- submit issuer do
+    createCmd CIP56Manager with issuer, meta
+
+  aHolding <- submit issuer do
+    exerciseCmd tmCid Mint with to = alice, amount = 100.0
+
+  -- Locked Asset Flow (Safe Transfer)
+  
+  -- 1. Alice locks funds for Bob (this also deducts from her balance)
+  -- Important: Alice needs to be able to SEE the rulesCid to pass it.
+  -- We made Alice an observer of ComplianceRules, so this should work.
+  (lockedCid, changeCid) <- submit alice do
+    exerciseCmd aHolding Lock with
+      receiver = bob
+      value = 30.0
+      complianceRulesCid = Some rulesCid
+  
+  -- 2. Bob claims the locked funds using his proof
+  -- Bob needs to see lockedCid (He is observer of LockedAsset)
+  -- Bob needs to see rulesCid (He is observer of ComplianceRules)
+  -- Bob needs to see bobProofCid (He is observer of ComplianceProof)
+  -- CompleteTransfer calls rules.ValidateProof(proofCid, Bob)
+  -- ValidateProof fetches proofCid. 
+  -- Bob calls ValidateProof. Bob sees proofCid.
+  -- Issuer maintainer of ComplianceRules executes choice? 
+  -- NO. `nonconsuming choice ValidateProof` controller is `user` (Bob).
+  -- So Bob executes `ValidateProof`.
+  -- Bob fetches `proofCid`.
+  -- Inside `ValidateProof` body, does it need Issuer authority?
+  -- No, it just asserts fields.
+  
+  _ <- submit bob do
+    exerciseCmd lockedCid CompleteTransfer with
+      complianceProofCid = Some bobProofCid
+
+  pure ()

@@ -1,0 +1,31 @@
+module Common.Utils where
+
+import DA.Text qualified as Text
+import Common.Types
+
+-- Validation helpers (pure boolean checks)
+isValidAmount : Decimal -> Bool
+isValidAmount amount = amount > 0.0
+
+hasSufficientBalance : Decimal -> Decimal -> Bool
+hasSufficientBalance balance amount = balance >= amount
+
+-- EVM address validation (basic)
+isValidEvmAddress : Text -> Bool
+isValidEvmAddress addr =
+  let len = Text.length addr
+  in len == 42 && Text.take 2 addr == "0x"
+
+-- Create EVM address with validation
+mkEvmAddress : Text -> Optional EvmAddress
+mkEvmAddress addr =
+  if isValidEvmAddress addr
+  then Some (EvmAddress addr)
+  else None
+
+-- Helper to validate and create EvmAddress with error message
+validateEvmAddress : Text -> Either Text EvmAddress
+validateEvmAddress addr =
+  if isValidEvmAddress addr
+  then Right (EvmAddress addr)
+  else Left ("Invalid EVM address: " <> addr)
