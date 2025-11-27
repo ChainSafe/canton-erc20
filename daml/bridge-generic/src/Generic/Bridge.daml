@@ -1,0 +1,20 @@
+module Generic.Bridge where
+
+-- Generic ERC20 bridge implementation
+-- To be implemented in Phase 5 (Week 13-14)
+--
+-- This module will include:
+-- - Dynamic token registration
+-- - Configurable metadata mapping
+-- - Multi-token support
+-- - ERC20 → CIP-56 conversion
+
+import Common.Types
+
+-- Placeholder for generic bridge configuration
+data GenericBridgeConfig = GenericBridgeConfig with
+  operator        : Party
+  registeredPairs : [Text]  -- Token symbols
+  defaultFee      : Decimal
+    deriving (Eq, Show)
+
