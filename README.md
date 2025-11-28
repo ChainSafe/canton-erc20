@@ -11,7 +11,7 @@ This repository contains the DAML implementation of a token bridge connecting ER
 
 | Bridge | Token | Status | Documentation |
 |--------|-------|--------|---------------|
-| **Wayfinder** | PRIME (`0x28d38...1544`) | ✅ **Production Ready** | [Testing Guide](daml/bridge-wayfinder/TESTING.md) |
+| **Wayfinder** | PROMPT (`0x28d38...1544`) | ✅ **Production Ready** | [Testing Guide](daml/bridge-wayfinder/TESTING.md) |
 | USDC | USDC | 🚧 In Development | [Requirements](docs/sow/usdc.md) |
 | cBTC | cBTC | 🚧 In Development | [Requirements](docs/sow/cbtc.md) |
 | Generic | Any ERC20 | 🚧 In Development | [Requirements](docs/sow/evm.md) |
@@ -137,7 +137,7 @@ Expected output:
 
 | Package | Token | EVM Contract | Status |
 |---------|-------|--------------|--------|
-| `bridge-wayfinder` | PRIME | `0x28d38df637db75533bd3f71426f3410a82041544` | ✅ Production |
+| `bridge-wayfinder` | PROMPT | `0x28d38df637db75533bd3f71426f3410a82041544` | ✅ Production |
 | `bridge-usdc` | USDC | TBD | 🚧 Development |
 | `bridge-cbtc` | cBTC | TBD | 🚧 Development |
 | `bridge-generic` | Any ERC20 | Dynamic | 🚧 Development |

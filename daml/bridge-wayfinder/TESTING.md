@@ -1,6 +1,6 @@
 # Wayfinder Bridge - End-to-End Testing Guide
 
-This document provides a comprehensive guide to testing the Wayfinder (PRIME) Bridge DAML smart contracts.
+This document provides a comprehensive guide to testing the Wayfinder (PROMPT) Bridge DAML smart contracts.
 
 ## Table of Contents
 
@@ -88,15 +88,15 @@ daml script \
 
 ```
 [DA.Internal.Prelude:557]: ">>> 1. Initialization: Deploying contracts..."
-[DA.Internal.Prelude:557]: "    ✓ Token Manager and Bridge Config deployed."
-[DA.Internal.Prelude:557]: ">>> 2. Deposit Flow: Bridging 100.0 PRIME from Ethereum to Alice..."
-[DA.Internal.Prelude:557]: "    ✓ Deposit complete. Alice holds 100.0 PRIME."
-[DA.Internal.Prelude:557]: ">>> 3. Native Transfer: Alice transfers 40.0 PRIME to Bob..."
-[DA.Internal.Prelude:557]: "    ✓ Transfer successful."
-[DA.Internal.Prelude:557]: ">>> 4. Withdrawal Flow: Bob bridges 40.0 PRIME back to Ethereum..."
-[DA.Internal.Prelude:557]: "    ✓ Redemption processed on Canton."
+[DA.Internal.Prelude:557]: "    [OK] Token Manager and Bridge Config deployed."
+[DA.Internal.Prelude:557]: ">>> 2. Deposit Flow: Bridging 100.0 PROMPT from Ethereum to Alice..."
+[DA.Internal.Prelude:557]: "    [OK] Deposit complete. Alice holds 100.0 PROMPT."
+[DA.Internal.Prelude:557]: ">>> 3. Native Transfer: Alice transfers 40.0 PROMPT to Bob..."
+[DA.Internal.Prelude:557]: "    [OK] Transfer successful."
+[DA.Internal.Prelude:557]: ">>> 4. Withdrawal Flow: Bob bridges 40.0 PROMPT back to Ethereum..."
+[DA.Internal.Prelude:557]: "    [OK] Redemption processed on Canton."
 [DA.Internal.Prelude:557]: ">>> 5. Final Verification..."
-[DA.Internal.Prelude:557]: "    ✓ BurnEvent confirmed correct."
+[DA.Internal.Prelude:557]: "    [OK] BurnEvent confirmed correct."
 [DA.Internal.Prelude:557]: ">>> Test Cycle Complete Successfully!"
 ```
 
@@ -115,7 +115,7 @@ daml script \
 │   (Simulated)   │    │   (Operator)     │    │     (Alice)       │
 └────────┬────────┘    └────────┬─────────┘    └─────────┬─────────┘
          │                      │                        │
-         │  Lock PRIME on EVM   │                        │
+         │  Lock PROMPT on EVM  │                        │
          │─────────────────────>│                        │
          │                      │                        │
          │                      │  CreateMintProposal    │
@@ -159,13 +159,13 @@ holdingCid <- submit operator do
 ```
 ┌─────────────────┐                      ┌─────────────────┐
 │     Alice       │                      │       Bob       │
-│  (100.0 PRIME)  │                      │   (0.0 PRIME)   │
+│ (100.0 PROMPT)  │                      │  (0.0 PROMPT)   │
 └────────┬────────┘                      └────────┬────────┘
          │                                        │
-         │  Transfer 40.0 PRIME                   │
+         │  Transfer 40.0 PROMPT                  │
          │───────────────────────────────────────>│
          │                                        │
-         │  Change: 60.0 PRIME                    │  Received: 40.0 PRIME
+         │  Change: 60.0 PROMPT                   │  Received: 40.0 PROMPT
          │                                        │
 ```
 
@@ -189,7 +189,7 @@ holdingCid <- submit operator do
 ```
 ┌─────────────────┐    ┌──────────────────┐    ┌───────────────────┐
 │      Bob        │    │     Canton       │    │    Ethereum       │
-│  (40.0 PRIME)   │    │   (Operator)     │    │   (Simulated)     │
+│  (40.0 PROMPT)  │    │   (Operator)     │    │   (Simulated)     │
 └────────┬────────┘    └────────┬─────────┘    └─────────┬─────────┘
          │                      │                        │
          │  Lock funds          │                        │

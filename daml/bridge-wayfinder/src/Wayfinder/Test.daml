@@ -14,16 +14,16 @@ setupParties = do
   bob <- allocatePartyWithHint "Bob" (PartyIdHint "bob")
   return (operator, alice, bob)
 
--- | Full end-to-end test cycle for Wayfinder PRIME Bridge
+-- | Full end-to-end test cycle for Wayfinder PROMPT Bridge
 --
--- This script tests the entire lifecycle of bridging PRIME tokens:
+-- This script tests the entire lifecycle of bridging PROMPT tokens:
 -- 1. Initialization: Operator sets up the Token Manager and Bridge Config.
 -- 2. Deposit (EVM -> Canton):
 --    - Operator proposes a mint (representing a lock on Ethereum).
 --    - User (Alice) accepts the proposal.
---    - Wrapped PRIME tokens are minted on Canton.
+--    - Wrapped PROMPT tokens are minted on Canton.
 -- 3. Transfer (Canton):
---    - Alice transfers some PRIME to Bob to verify token mechanics.
+--    - Alice transfers some PROMPT to Bob to verify token mechanics.
 -- 4. Withdrawal (Canton -> EVM):
 --    - Bob requests redemption (bridging back to Ethereum).
 --    - This involves Locking the asset -> Creating RedeemRequest -> Operator Burning.
@@ -38,11 +38,11 @@ testWayfinderBridge = script do
   
   debug ">>> 1. Initialization: Deploying contracts..."
 
-  -- Operator deploys the Token Manager for the wrapped PRIME token
+  -- Operator deploys the Token Manager for the wrapped PROMPT token
   tokenManagerCid <- submit operator do
     createCmd CIP56Manager with
       issuer = operator
-      meta = primeMetadata
+      meta = promptMetadata
 
   -- Operator deploys the Bridge Configuration
   configCid <- submit operator do
@@ -50,12 +50,12 @@ testWayfinderBridge = script do
       operator = operator
       tokenManagerCid = tokenManagerCid
 
-  debug "    ✓ Token Manager and Bridge Config deployed."
+  debug "    [OK] Token Manager and Bridge Config deployed."
 
   -- ===========================================================================
   -- 2. DEPOSIT FLOW (Ethereum -> Canton)
   -- ===========================================================================
-  debug ">>> 2. Deposit Flow: Bridging 100.0 PRIME from Ethereum to Alice..."
+  debug ">>> 2. Deposit Flow: Bridging 100.0 PROMPT from Ethereum to Alice..."
 
   -- Simulate: Operator detects a Deposit event on Ethereum (tx hash: 0x123...)
   let ethTxHash = "0x1234567890abcdef..."
@@ -79,15 +79,15 @@ testWayfinderBridge = script do
 
   -- Verify Alice's balance
   Some aliceHolding <- queryContractId alice aliceHoldingCid
-  assertMsg "Alice should have 100.0 PRIME" (aliceHolding.amount == 100.0)
-  assertMsg "Token symbol should be PRIME" (aliceHolding.meta.symbol == "PRIME")
+  assertMsg "Alice should have 100.0 PROMPT" (aliceHolding.amount == 100.0)
+  assertMsg "Token symbol should be PROMPT" (aliceHolding.meta.symbol == "PROMPT")
   
-  debug "    ✓ Deposit complete. Alice holds 100.0 PRIME."
+  debug "    [OK] Deposit complete. Alice holds 100.0 PROMPT."
 
   -- ===========================================================================
   -- 3. TRANSFER (Canton Native)
   -- ===========================================================================
-  debug ">>> 3. Native Transfer: Alice transfers 40.0 PRIME to Bob..."
+  debug ">>> 3. Native Transfer: Alice transfers 40.0 PROMPT to Bob..."
 
   -- Alice transfers 40.0 to Bob
   (bobHoldingCid, maybeAliceChangeCid) <- submit alice do
@@ -99,21 +99,21 @@ testWayfinderBridge = script do
 
   -- Verify Bob's balance
   Some bobHolding <- queryContractId bob bobHoldingCid
-  assertMsg "Bob should have 40.0 PRIME" (bobHolding.amount == 40.0)
+  assertMsg "Bob should have 40.0 PROMPT" (bobHolding.amount == 40.0)
 
   -- Verify Alice's change
   case maybeAliceChangeCid of
     Some changeCid -> do
       Some change <- queryContractId alice changeCid
-      assertMsg "Alice should have 60.0 PRIME remaining" (change.amount == 60.0)
+      assertMsg "Alice should have 60.0 PROMPT remaining" (change.amount == 60.0)
     None -> fail "Alice should have received change"
 
-  debug "    ✓ Transfer successful."
+  debug "    [OK] Transfer successful."
 
   -- ===========================================================================
   -- 4. WITHDRAWAL FLOW (Canton -> Ethereum)
   -- ===========================================================================
-  debug ">>> 4. Withdrawal Flow: Bob bridges 40.0 PRIME back to Ethereum..."
+  debug ">>> 4. Withdrawal Flow: Bob bridges 40.0 PROMPT back to Ethereum..."
 
   let evmDestination = EvmAddress "0xBobEthAddress..."
   let redemptionRef = "req-bridge-back-001"
@@ -140,17 +140,10 @@ testWayfinderBridge = script do
 
   -- Step 4c: Operator processes the redemption (Approved Burn)
   -- This claims the LockedAsset (CompleteTransfer) and immediately Burns it
-  
-  -- IMPORTANT: Ensure redeemRequestCid is the correct contract ID and accessible
-  -- There was previously a ContractNotActive error here.
-  -- Possible cause: `RedeemRequest` creation logic or `ApproveBurn` consumption.
-  -- `ApproveBurn` consumes `RedeemRequest`. It also consumes `LockedAsset` (via CompleteTransfer)
-  -- and `CIP56Holding` (via Burn). All should be active at this point.
-  
   burnEventCid <- submit operator do
     exerciseCmd redeemRequestCid ApproveBurn
 
-  debug "    ✓ Redemption processed on Canton."
+  debug "    [OK] Redemption processed on Canton."
 
   -- ===========================================================================
   -- 5. VERIFICATION
@@ -166,7 +159,7 @@ testWayfinderBridge = script do
   assertMsg "Burn operator is correct" (burnEvent.operator == operator)
   assertMsg "Burn owner is correct" (burnEvent.owner == bob)
 
-  debug "    ✓ BurnEvent confirmed correct."
+  debug "    [OK] BurnEvent confirmed correct."
   debug ">>> Test Cycle Complete Successfully!"
   
   pure ()
