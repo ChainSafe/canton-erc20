@@ -4,11 +4,11 @@ import Common.Types
 import CIP56.Token
 import Bridge.Contracts
 
--- Wayfinder PRIME Token Metadata
-primeMetadata : ExtendedMetadata
-primeMetadata = ExtendedMetadata with
-  name = "Parallel (Wayfinder) PRIME"
-  symbol = "PRIME"
+-- Wayfinder PROMPT Token Metadata
+promptMetadata : ExtendedMetadata
+promptMetadata = ExtendedMetadata with
+  name = "Wayfinder"
+  symbol = "PROMPT"
   decimals = 18
   isin = None
   dtiCode = None
@@ -29,7 +29,7 @@ template WayfinderBridgeConfig
     nonconsuming choice GetMetadata : ExtendedMetadata
       controller operator
       do
-        pure primeMetadata
+        pure promptMetadata
 
     -- Helper to initiate a mint proposal (Standard Bridge Flow)
     nonconsuming choice CreateMintProposal : ContractId MintProposal
@@ -47,4 +47,3 @@ template WayfinderBridgeConfig
           amount = amount
           reference = txHash
           source = ChainRef with chainName = "Ethereum", eventId = txHash
-

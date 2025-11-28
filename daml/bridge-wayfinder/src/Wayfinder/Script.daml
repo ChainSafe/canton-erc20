@@ -19,11 +19,11 @@ testFullCycle = script do
   operator <- ensureParty "WayfinderOperator" (PartyIdHint "operator")
   alice <- ensureParty "Alice" (PartyIdHint "alice")
   
-  -- 2. Deploy Token Manager for PRIME
+  -- 2. Deploy Token Manager for PROMPT
   tokenManagerCid <- submit operator do
     createCmd CIP56Manager with
       issuer = operator
-      meta = primeMetadata
+      meta = promptMetadata
 
   -- 3. Deploy Bridge Config
   configCid <- submit operator do
@@ -53,8 +53,8 @@ testFullCycle = script do
 
   -- Verify Alice has funds
   Some holding <- queryContractId alice holdingCid
-  assertMsg "Alice received PRIME" (holding.amount == depositAmount)
-  assertMsg "Correct Symbol" (holding.meta.symbol == "PRIME")
+  assertMsg "Alice received PROMPT" (holding.amount == depositAmount)
+  assertMsg "Correct Symbol" (holding.meta.symbol == "PROMPT")
 
   -- 5. WITHDRAWAL FLOW (Canton -> Ethereum)
   -- Alice requests redemption to her EVM address

@@ -16,9 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.0] - 2024-11-27
 
-### 🎉 Initial Production Release - Wayfinder Bridge
+### Initial Production Release - Wayfinder Bridge
 
-This release marks the first production-ready deployment of the Canton-EVM Token Bridge, specifically for the **Wayfinder (PRIME)** token.
+This release marks the first production-ready deployment of the Canton-EVM Token Bridge, specifically for the **Wayfinder (PROMPT)** token.
 
 ### Added
 
@@ -46,7 +46,7 @@ This release marks the first production-ready deployment of the Canton-EVM Token
 #### Wayfinder Bridge (Production Ready)
 - **bridge-wayfinder** package:
   - `WayfinderBridgeConfig` - Bridge operator configuration
-  - `primeMetadata` - PRIME token metadata (ERC20: `0x28d38df637db75533bd3f71426f3410a82041544`)
+  - `promptMetadata` - PROMPT token metadata (ERC20: `0x28d38df637db75533bd3f71426f3410a82041544`)
   - Full end-to-end test suite (`Wayfinder.Test:testWayfinderBridge`)
   - Comprehensive testing documentation (`TESTING.md`)
 
