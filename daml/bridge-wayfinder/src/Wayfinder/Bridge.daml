@@ -7,7 +7,7 @@ import Bridge.Contracts
 -- Wayfinder PROMPT Token Metadata
 promptMetadata : ExtendedMetadata
 promptMetadata = ExtendedMetadata with
-  name = "Wayfinder"
+  name = "Wayfinder PROMPT"
   symbol = "PROMPT"
   decimals = 18
   isin = None
@@ -31,7 +31,65 @@ template WayfinderBridgeConfig
       do
         pure promptMetadata
 
-    -- Helper to initiate a mint proposal (Standard Bridge Flow)
+    -- =========================================================================
+    -- HASH-BASED MINT (Middleware passes raw bytes32, Canton resolves)
+    -- =========================================================================
+    
+    -- | Create mint proposal by looking up recipient from PartyHashRegistry
+    -- 
+    -- This is the PRIMARY method for deposits. The middleware:
+    -- 1. Monitors DepositToCanton events on Ethereum
+    -- 2. Extracts the bytes32 cantonRecipient as hex string
+    -- 3. Calls this choice with the raw hash (NO lookup in middleware)
+    -- 4. Canton resolves hash → Party via PartyHashRegistry
+    --
+    -- If the hash is not registered, this will fail with "recipient not found"
+    nonconsuming choice CreateMintProposalByHash : ContractId MintProposalByHash
+      with
+        recipientHash : Text    -- bytes32 from Ethereum as hex "0xABC..."
+        amount        : Decimal
+        txHash        : Text    -- EVM transaction hash
+      controller operator
+      do
+        -- Look up the registry to resolve hash → Party
+        (_, registry) <- fetchByKey @PartyHashRegistry (operator, recipientHash)
+        
+        create MintProposalByHash with
+          operator = operator
+          issuer = operator
+          recipient = registry.owner  -- Resolved from registry!
+          recipientHash = recipientHash
+          tokenManagerCid = tokenManagerCid
+          amount = amount
+          reference = txHash
+          source = ChainRef with chainName = "Ethereum", eventId = txHash
+
+    -- =========================================================================
+    -- REGISTRATION HELPERS
+    -- =========================================================================
+    
+    -- | Approve a party hash registration request
+    -- 
+    -- Users submit PartyHashRegistrationRequest, operator approves here.
+    -- This creates the PartyHashRegistry entry that enables hash-based mints.
+    nonconsuming choice ApprovePartyRegistration : ContractId PartyHashRegistry
+      with
+        requestCid : ContractId PartyHashRegistrationRequest
+      controller operator
+      do
+        exercise requestCid ApproveRegistration
+
+    -- =========================================================================
+    -- STANDARD MINT (Direct recipient - for testing/admin use)
+    -- =========================================================================
+    
+    -- | Helper to initiate a mint proposal (Standard Bridge Flow)
+    -- 
+    -- Use CreateMintProposalByHash for production deposits.
+    -- This is useful for:
+    -- - Testing without registry setup
+    -- - Admin/manual mints
+    -- - Backwards compatibility
     nonconsuming choice CreateMintProposal : ContractId MintProposal
       with
         recipient : Party
@@ -41,7 +99,7 @@ template WayfinderBridgeConfig
       do
         create MintProposal with
           operator = operator
-          issuer = operator -- In Phase 0/1 model, operator is often issuer. Can be separated.
+          issuer = operator
           recipient = recipient
           tokenManagerCid = tokenManagerCid
           amount = amount

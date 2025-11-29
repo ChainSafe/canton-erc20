@@ -48,7 +48,7 @@ daml/
 │       └── Contracts.daml    # MintProposal, RedeemRequest, BurnEvent
 └── bridge-wayfinder/         # Wayfinder-specific bridge
     └── src/Wayfinder/
-        ├── Bridge.daml       # WayfinderBridgeConfig, primeMetadata
+        ├── Bridge.daml       # WayfinderBridgeConfig, promptMetadata
         └── Test.daml         # End-to-end test script
 ```
 
@@ -315,7 +315,7 @@ daml script \
 | Step | Assertion | Purpose |
 |------|-----------|---------|
 | Deposit | `aliceHolding.amount == 100.0` | Verify correct mint amount |
-| Deposit | `aliceHolding.meta.symbol == "PRIME"` | Verify token metadata |
+| Deposit | `aliceHolding.meta.symbol == "PROMPT"` | Verify token metadata |
 | Transfer | `bobHolding.amount == 40.0` | Verify transfer amount |
 | Transfer | `change.amount == 60.0` | Verify change returned |
 | Withdrawal | `burnEvent.amount == 40.0` | Verify burn amount |

@@ -48,3 +48,93 @@ toBasicMetadata em = TokenMeta with
   name     = em.name
   symbol   = em.symbol
   decimals = em.decimals
+
+-- =============================================================================
+-- PARTY HASH REGISTRY: Maps bytes32 hash → Canton Party
+-- =============================================================================
+-- 
+-- This template enables Canton-side resolution of Ethereum recipient hashes.
+-- The middleware passes the raw bytes32 from DepositToCanton events, and
+-- Canton resolves it to a Party using this registry.
+--
+-- Flow:
+-- 1. User registers ONCE on Canton: keccak256(partyId) → Party
+-- 2. User deposits on Ethereum with their hash as cantonRecipient
+-- 3. Middleware passes hash through (no lookup needed)
+-- 4. Canton resolves hash → Party and creates MintProposal
+
+-- | Registry entry linking a keccak256 hash to a Canton Party
+--
+-- Users create this to register their Canton party with the bridge.
+-- The partyHash should be keccak256(fullCantonPartyId) as hex string.
+--
+-- Example: If Alice's full party ID is "Alice::1220abcd1234..."
+--          partyHash = "0x" + keccak256("Alice::1220abcd1234...").hex()
+--
+-- Note: Both owner and operator are signatories to enable lookup by (operator, hash)
+-- This requires the registration request → approval pattern for creation.
+template PartyHashRegistry
+  with
+    owner     : Party   -- The Canton party this hash resolves to
+    operator  : Party   -- Bridge operator (signatory for lookup key)
+    partyHash : Text    -- keccak256(partyId) as hex string "0xABC..."
+    evmAddress : Optional EvmAddress  -- Optional: linked EVM address for withdrawals
+  where
+    signatory owner, operator  -- Both signatories for key maintainer requirement
+    
+    -- Key by (operator, partyHash) for O(1) lookup by hash
+    -- This enables: fetchByKey @PartyHashRegistry (operator, hash)
+    key (operator, partyHash) : (Party, Text)
+    maintainer key._1
+    
+    -- | Update the linked EVM address for withdrawals
+    choice UpdateEvmAddress : ContractId PartyHashRegistry
+      with
+        newEvmAddress : EvmAddress
+      controller owner
+      do
+        create this with evmAddress = Some newEvmAddress
+    
+    -- | Unregister (archive) this entry
+    choice Unregister : ()
+      controller owner
+      do
+        pure ()
+
+-- | Request to register a party hash (if operator approval is required)
+-- 
+-- Use this if the bridge requires operator approval for registrations.
+-- Otherwise, users can create PartyHashRegistry directly if operator
+-- is set up to auto-accept via a config contract.
+template PartyHashRegistrationRequest
+  with
+    owner     : Party
+    operator  : Party
+    partyHash : Text
+    evmAddress : Optional EvmAddress
+  where
+    signatory owner
+    observer operator
+    
+    key (operator, owner, partyHash) : (Party, Party, Text)
+    maintainer key._2
+    
+    -- | Operator approves the registration
+    choice ApproveRegistration : ContractId PartyHashRegistry
+      controller operator
+      do
+        create PartyHashRegistry with
+          owner = owner
+          operator = operator
+          partyHash = partyHash
+          evmAddress = evmAddress
+    
+    -- | Operator rejects the registration
+    choice RejectRegistration : ()
+      controller operator
+      do pure ()
+    
+    -- | Owner cancels the request
+    choice CancelRegistration : ()
+      controller owner
+      do pure ()
