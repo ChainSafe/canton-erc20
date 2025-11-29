@@ -3,7 +3,53 @@ module Bridge.Contracts where
 import Common.Types
 import CIP56.Token
 
--- Mint proposal for bridging tokens from EVM to Canton
+-- =============================================================================
+-- HASH-BASED MINT PROPOSAL (Resolves recipient from PartyHashRegistry)
+-- =============================================================================
+--
+-- This template enables the middleware to pass the raw bytes32 cantonRecipient
+-- from Ethereum's DepositToCanton event. Canton resolves it to a Party.
+--
+-- Flow:
+-- 1. Ethereum: User calls depositToCanton(token, amount, bytes32 recipientHash)
+-- 2. Middleware: Sees event, creates MintProposalByHash with the raw hash
+-- 3. Canton: Resolves hash → Party via PartyHashRegistry lookup
+-- 4. Recipient: Accepts the proposal (same as standard flow)
+
+-- | Mint proposal created by hash lookup
+-- 
+-- The operator creates this after looking up the PartyHashRegistry.
+-- This is functionally equivalent to MintProposal but documents that
+-- the recipient was resolved from a hash.
+template MintProposalByHash
+  with
+    operator        : Party
+    issuer          : Party
+    recipient       : Party          -- Resolved from PartyHashRegistry
+    recipientHash   : Text           -- Original hash from Ethereum (for audit)
+    tokenManagerCid : ContractId CIP56Manager
+    amount          : Decimal
+    reference       : Text           -- EVM tx hash
+    source          : ChainRef
+  where
+    signatory operator
+    observer recipient
+
+    key (operator, reference) : (Party, Text)
+    maintainer key._1
+
+    -- | Recipient accepts, creating authorization for minting
+    choice AcceptByHash : ContractId MintAuthorization
+      controller recipient
+      do
+        create MintAuthorization with 
+          operator, issuer, recipient, tokenManagerCid, amount, reference, source
+
+-- =============================================================================
+-- STANDARD MINT FLOW (Direct recipient specification)
+-- =============================================================================
+
+-- | Mint proposal for bridging tokens from EVM to Canton
 template MintProposal
   with
     operator        : Party

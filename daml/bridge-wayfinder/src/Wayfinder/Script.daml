@@ -6,18 +6,11 @@ import CIP56.Token
 import Bridge.Contracts
 import Wayfinder.Bridge
 
-ensureParty : Text -> PartyIdHint -> Script Party
-ensureParty displayName hint = do
-  known <- listKnownParties
-  case [ p.party | p <- known, p.displayName == Some displayName ] of
-    p :: _ -> pure p
-    []     -> allocatePartyWithHint displayName hint
-
 testFullCycle : Script ()
 testFullCycle = script do
   -- 1. Setup Parties
-  operator <- ensureParty "WayfinderOperator" (PartyIdHint "operator")
-  alice <- ensureParty "Alice" (PartyIdHint "alice")
+  operator <- allocatePartyWithHint "WayfinderOperator" (PartyIdHint "operator")
+  alice <- allocatePartyWithHint "Alice" (PartyIdHint "alice")
   
   -- 2. Deploy Token Manager for PROMPT
   tokenManagerCid <- submit operator do

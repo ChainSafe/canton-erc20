@@ -163,3 +163,163 @@ testWayfinderBridge = script do
   debug ">>> Test Cycle Complete Successfully!"
   
   pure ()
+
+-- =============================================================================
+-- HASH-BASED REGISTRATION AND MINT FLOW TEST
+-- =============================================================================
+
+-- | Test the hash-based recipient resolution flow
+--
+-- This demonstrates the production flow where:
+-- 1. User registers their Canton party hash on Canton (one-time)
+-- 2. User deposits on Ethereum with their hash as cantonRecipient
+-- 3. Middleware passes raw hash through (no lookup)
+-- 4. Canton resolves hash → Party and creates mint proposal
+testHashBasedMintFlow : Script ()
+testHashBasedMintFlow = script do
+  -- ===========================================================================
+  -- 1. INITIALIZATION
+  -- ===========================================================================
+  (operator, alice, bob) <- setupParties
+  
+  debug ">>> Hash-Based Flow Test"
+  debug ">>> 1. Initialization..."
+
+  tokenManagerCid <- submit operator do
+    createCmd CIP56Manager with
+      issuer = operator
+      meta = promptMetadata
+
+  configCid <- submit operator do
+    createCmd WayfinderBridgeConfig with
+      operator = operator
+      tokenManagerCid = tokenManagerCid
+
+  debug "    [OK] Bridge deployed."
+
+  -- ===========================================================================
+  -- 2. USER REGISTRATION (One-time on Canton)
+  -- ===========================================================================
+  debug ">>> 2. Alice registers her party hash..."
+
+  -- Alice computes her hash off-chain: keccak256("Alice::1220...")
+  -- For this test, we use a simulated hash
+  let alicePartyHash = "0xabcd1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab"
+  let aliceEvmAddress = EvmAddress "0xAliceEthWallet..."
+
+  -- Alice submits a registration request
+  registrationRequestCid <- submit alice do
+    createCmd PartyHashRegistrationRequest with
+      owner = alice
+      operator = operator
+      partyHash = alicePartyHash
+      evmAddress = Some aliceEvmAddress
+
+  debug "    [OK] Alice submitted registration request."
+
+  -- Operator approves the registration
+  aliceRegistryCid <- submit operator do
+    exerciseCmd configCid ApprovePartyRegistration with
+      requestCid = registrationRequestCid
+
+  -- Verify registration
+  Some aliceRegistry <- queryContractId alice aliceRegistryCid
+  assertMsg "Registry owner should be Alice" (aliceRegistry.owner == alice)
+  assertMsg "Registry hash should match" (aliceRegistry.partyHash == alicePartyHash)
+
+  debug "    [OK] Registration approved. Alice can now receive deposits."
+
+  -- ===========================================================================
+  -- 3. HASH-BASED DEPOSIT (Middleware passes raw bytes32)
+  -- ===========================================================================
+  debug ">>> 3. Deposit with hash-based recipient resolution..."
+
+  -- Simulate: Middleware sees DepositToCanton event on Ethereum
+  -- Event contains: token, sender (0xAliceEthWallet), cantonRecipient (bytes32), amount, nonce
+  -- Middleware just passes the raw bytes32 to Canton
+  let ethTxHash = "0xEthDepositTx123..."
+  let depositAmount = 250.0
+
+  -- Middleware calls CreateMintProposalByHash with raw hash
+  -- Canton resolves: hash → PartyHashRegistry → Alice
+  proposalCid <- submit operator do
+    exerciseCmd configCid CreateMintProposalByHash with
+      recipientHash = alicePartyHash  -- Raw bytes32 from Ethereum event
+      amount = depositAmount
+      txHash = ethTxHash
+
+  debug "    [OK] Mint proposal created via hash lookup."
+
+  -- Verify the proposal resolved to Alice
+  Some proposal <- queryContractId alice proposalCid
+  assertMsg "Recipient should be Alice" (proposal.recipient == alice)
+  assertMsg "Hash should be preserved for audit" (proposal.recipientHash == alicePartyHash)
+
+  -- ===========================================================================
+  -- 4. ALICE ACCEPTS (Same as standard flow from here)
+  -- ===========================================================================
+  debug ">>> 4. Alice accepts the proposal..."
+
+  authCid <- submit alice do
+    exerciseCmd proposalCid AcceptByHash
+
+  aliceHoldingCid <- submit operator do
+    exerciseCmd authCid MintOnCanton
+
+  -- Verify Alice's balance
+  Some aliceHolding <- queryContractId alice aliceHoldingCid
+  assertMsg "Alice should have 250.0 PROMPT" (aliceHolding.amount == 250.0)
+
+  debug "    [OK] Alice received 250.0 PROMPT via hash-based flow."
+
+  -- ===========================================================================
+  -- 5. SECURITY TEST: Unregistered hash should fail
+  -- ===========================================================================
+  debug ">>> 5. Security: Unregistered hash should fail..."
+
+  let unregisteredHash = "0xDEADBEEF0000000000000000000000000000000000000000000000000000DEAD"
+
+  -- This should fail because the hash is not in the registry
+  submitMustFail operator do
+    exerciseCmd configCid CreateMintProposalByHash with
+      recipientHash = unregisteredHash
+      amount = 1000.0
+      txHash = "0xAttackerTx..."
+
+  debug "    [OK] Unregistered hash rejected."
+
+  -- ===========================================================================
+  -- 6. BOB REGISTERS AND RECEIVES
+  -- ===========================================================================
+  debug ">>> 6. Bob registers and receives deposit..."
+
+  let bobPartyHash = "0xBBBB1234567890abcdef1234567890abcdef1234567890abcdef1234567890BB"
+
+  -- Bob registers directly (operator can allow direct registration)
+  bobRegistryCid <- submitMulti [bob, operator] [] do
+    createCmd PartyHashRegistry with
+      owner = bob
+      operator = operator
+      partyHash = bobPartyHash
+      evmAddress = Some (EvmAddress "0xBobEthWallet...")
+
+  -- Bob receives deposit via hash
+  bobProposalCid <- submit operator do
+    exerciseCmd configCid CreateMintProposalByHash with
+      recipientHash = bobPartyHash
+      amount = 100.0
+      txHash = "0xBobDepositTx..."
+
+  bobAuthCid <- submit bob do
+    exerciseCmd bobProposalCid AcceptByHash
+
+  bobHoldingCid <- submit operator do
+    exerciseCmd bobAuthCid MintOnCanton
+
+  Some bobHolding <- queryContractId bob bobHoldingCid
+  assertMsg "Bob should have 100.0 PROMPT" (bobHolding.amount == 100.0)
+
+  debug "    [OK] Bob received 100.0 PROMPT."
+
+  debug ">>> Hash-Based Flow Test Complete!"
+  pure ()
