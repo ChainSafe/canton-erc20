@@ -23,7 +23,7 @@ template LockedAsset
     meta : ExtendedMetadata
     complianceRulesCid : Optional (ContractId ComplianceRules)
   where
-    signatory sender
+    signatory issuer, sender
     observer receiver
 
     choice CompleteTransfer : ContractId CIP56Holding
