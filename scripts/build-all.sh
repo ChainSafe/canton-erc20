@@ -90,7 +90,7 @@ build_package() {
 
   # Build
   if [[ "${VERBOSE}" == "true" ]]; then
-    if daml build --enable-multi-package=no; then
+    if daml build; then
       success "${pkg_name} built successfully"
       return 0
     else
@@ -98,7 +98,7 @@ build_package() {
       return 1
     fi
   else
-    if daml build --enable-multi-package=no 2>&1 | grep -E "(ERROR|error|Created .*.dar)" ; then
+    if daml build 2>&1 | grep -E "(ERROR|error|Created .*.dar)" ; then
       success "${pkg_name} built successfully"
       return 0
     else

@@ -96,7 +96,7 @@ test_package() {
   fi
 
   # Build test command
-  local test_cmd="daml test --enable-multi-package=no"
+  local test_cmd="daml test"
 
   if [[ "${COVERAGE}" == "true" ]]; then
     test_cmd="${test_cmd} --show-coverage"
