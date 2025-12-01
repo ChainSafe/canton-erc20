@@ -120,6 +120,7 @@ PACKAGES=(
   "common"
   "cip56-token"
   "bridge-core"
+  "bridge-wayfinder"
   "bridge-usdc"
   "bridge-cbtc"
   "bridge-generic"
