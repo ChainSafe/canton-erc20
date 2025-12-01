@@ -1,6 +1,6 @@
 name: integration-tests
 version: 1.0.0
-sdk-version: 2.10.2
+sdk-version: 3.4.8
 
 source: .
 dependencies:

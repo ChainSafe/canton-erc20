@@ -10,8 +10,7 @@ template ComplianceRules
     signatory issuer
     observer observers
 
-    key issuer : Party
-    maintainer key
+    -- NOTE: Contract key removed for DAML-LF 2.x compatibility
 
     choice ToggleWhitelist : ContractId ComplianceRules
       with
@@ -40,8 +39,7 @@ template ComplianceProof
     signatory issuer
     observer user
 
-    key (issuer, user) : (Party, Party)
-    maintainer key._1
+    -- NOTE: Contract key removed for DAML-LF 2.x compatibility
 
     choice Revoke : ()
       controller issuer

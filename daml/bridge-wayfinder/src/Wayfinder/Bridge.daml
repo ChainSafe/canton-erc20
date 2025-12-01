@@ -15,15 +15,15 @@ promptMetadata = ExtendedMetadata with
   regulatoryInfo = Some "ERC20: 0x28d38df637db75533bd3f71426f3410a82041544"
 
 -- Configuration for the Wayfinder Bridge
+--
+-- NOTE: Contract key removed for DAML-LF 2.x compatibility.
+-- Track WayfinderBridgeConfig ContractId in your application.
 template WayfinderBridgeConfig
   with
     operator : Party
     tokenManagerCid : ContractId CIP56Manager
   where
     signatory operator
-
-    key operator : Party
-    maintainer key
 
     -- Helper to get metadata for reference
     nonconsuming choice GetMetadata : ExtendedMetadata
@@ -32,33 +32,34 @@ template WayfinderBridgeConfig
         pure promptMetadata
 
     -- =========================================================================
-    -- HASH-BASED MINT (Middleware passes raw bytes32, Canton resolves)
+    -- HASH-BASED MINT (Middleware passes registry ContractId + raw bytes32)
     -- =========================================================================
     
-    -- | Create mint proposal by looking up recipient from PartyHashRegistry
+    -- | Create mint proposal using a PartyHashRegistry entry
     -- 
     -- This is the PRIMARY method for deposits. The middleware:
     -- 1. Monitors DepositToCanton events on Ethereum
-    -- 2. Extracts the bytes32 cantonRecipient as hex string
-    -- 3. Calls this choice with the raw hash (NO lookup in middleware)
-    -- 4. Canton resolves hash → Party via PartyHashRegistry
+    -- 2. Looks up the PartyHashRegistry ContractId for the recipient hash
+    -- 3. Calls this choice with the registry ContractId
+    -- 4. Canton fetches the registry and creates the proposal
     --
-    -- If the hash is not registered, this will fail with "recipient not found"
+    -- NOTE: In SDK 3.x (DAML-LF 2.x), contract keys are not supported.
+    -- The middleware must track PartyHashRegistry ContractIds and pass them here.
     nonconsuming choice CreateMintProposalByHash : ContractId MintProposalByHash
       with
-        recipientHash : Text    -- bytes32 from Ethereum as hex "0xABC..."
+        registryCid   : ContractId PartyHashRegistry  -- Registry entry for recipient
         amount        : Decimal
         txHash        : Text    -- EVM transaction hash
       controller operator
       do
-        -- Look up the registry to resolve hash → Party
-        (_, registry) <- fetchByKey @PartyHashRegistry (operator, recipientHash)
+        -- Fetch the registry to get the recipient Party
+        registry <- fetch registryCid
         
         create MintProposalByHash with
           operator = operator
           issuer = operator
           recipient = registry.owner  -- Resolved from registry!
-          recipientHash = recipientHash
+          recipientHash = registry.partyHash
           tokenManagerCid = tokenManagerCid
           amount = amount
           reference = txHash

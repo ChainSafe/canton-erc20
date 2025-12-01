@@ -5,18 +5,15 @@ import Common.Types
 import CIP56.Token
 import CIP56.Compliance
 
-ensureParty : Text -> PartyIdHint -> Script Party
-ensureParty displayName hint = do
-  known <- listKnownParties
-  case [ p.party | p <- known, p.displayName == Some displayName ] of
-    p :: _ -> pure p
-    []     -> allocatePartyWithHint displayName hint
+-- Simple party allocation for tests (SDK 3.x compatible)
+allocateTestParty : Text -> Script Party
+allocateTestParty name = allocatePartyByHint (PartyIdHint name)
 
 test : Script ()
 test = script do
-  issuer <- ensureParty "Issuer" (PartyIdHint "issuer")
-  alice  <- ensureParty "Alice"  (PartyIdHint "alice")
-  bob    <- ensureParty "Bob"    (PartyIdHint "bob")
+  issuer <- allocateTestParty "issuer"
+  alice  <- allocateTestParty "alice"
+  bob    <- allocateTestParty "bob"
 
   let meta = ExtendedMetadata with 
         name = "Canton Coin"

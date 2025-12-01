@@ -1,32 +1,32 @@
-# Multi-package workspace configuration
+# Multi-package workspace configuration for SDK 3.x
 # Build order is determined by dependencies, not list order
 #
 # Dependency Graph:
 #   common (no deps)
 #     └── cip56-token
 #           └── bridge-core
-#                 ├── bridge-wayfinder  ✅ PRODUCTION READY
-#                 ├── bridge-usdc       🚧 In Development
-#                 ├── bridge-cbtc       🚧 In Development
-#                 └── bridge-generic    🚧 In Development
+#                 ├── bridge-wayfinder  - PRODUCTION READY
+#                 ├── bridge-usdc       - In Development
+#                 ├── bridge-cbtc       - In Development
+#                 └── bridge-generic    - In Development
 #     └── dvp
 #
 # integration-tests depends on all packages
 
-projects:
+packages:
   # === Core Infrastructure ===
-  - common
-  - cip56-token
-  - bridge-core
+  - ./common
+  - ./cip56-token
+  - ./bridge-core
   
   # === Client-Specific Bridges ===
-  - bridge-wayfinder    # Wayfinder PRIME token - PRODUCTION READY
-  - bridge-usdc         # Circle USDC - In Development
-  - bridge-cbtc         # BitSafe cBTC - In Development
-  - bridge-generic      # Generic ERC20 - In Development
+  - ./bridge-wayfinder    # Wayfinder PRIME token - PRODUCTION READY
+  - ./bridge-usdc         # Circle USDC - In Development
+  - ./bridge-cbtc         # BitSafe cBTC - In Development
+  - ./bridge-generic      # Generic ERC20 - In Development
   
   # === Additional Modules ===
-  - dvp
+  - ./dvp
   
   # === Testing ===
-  - integration-tests
+  - ./integration-tests

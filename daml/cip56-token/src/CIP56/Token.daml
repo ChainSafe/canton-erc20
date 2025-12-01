@@ -71,8 +71,8 @@ template CIP56Manager
   where
     signatory issuer
 
-    key issuer : Party
-    maintainer key
+    -- NOTE: Contract key removed for DAML-LF 2.x compatibility
+    -- Track CIP56Manager ContractId in your application instead of using fetchByKey
 
     -- Mint tokens to a recipient (nonconsuming so manager can be reused)
     nonconsuming choice Mint : ContractId CIP56Holding

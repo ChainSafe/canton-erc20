@@ -9,8 +9,8 @@ import Wayfinder.Bridge
 testFullCycle : Script ()
 testFullCycle = script do
   -- 1. Setup Parties
-  operator <- allocatePartyWithHint "WayfinderOperator" (PartyIdHint "operator")
-  alice <- allocatePartyWithHint "Alice" (PartyIdHint "alice")
+  operator <- allocatePartyByHint (PartyIdHint "operator")
+  alice <- allocatePartyByHint (PartyIdHint "alice")
   
   -- 2. Deploy Token Manager for PROMPT
   tokenManagerCid <- submit operator do
