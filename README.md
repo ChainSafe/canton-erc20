@@ -7,16 +7,16 @@
 
 This repository contains the DAML implementation of a token bridge connecting ERC-20 tokens on Ethereum with CIP-56 compliant tokens on Canton Network. The Go middleware implementation is maintained separately.
 
-## 🚀 Production Status
+## Production Status
 
 | Bridge | Token | Status | Documentation |
 |--------|-------|--------|---------------|
-| **Wayfinder** | PROMPT (`0x28d38...1544`) | ✅ **Production Ready** | [Testing Guide](daml/bridge-wayfinder/TESTING.md) |
-| USDC | USDC | 🚧 In Development | [Requirements](docs/sow/usdc.md) |
-| cBTC | cBTC | 🚧 In Development | [Requirements](docs/sow/cbtc.md) |
-| Generic | Any ERC20 | 🚧 In Development | [Requirements](docs/sow/evm.md) |
+| **Wayfinder** | PROMPT (`0x28d38...1544`) | **Production Ready** | [Testing Guide](daml/bridge-wayfinder/TESTING.md) |
+| USDC | USDC | In Development | [Requirements](docs/sow/usdc.md) |
+| cBTC | cBTC | In Development | [Requirements](docs/sow/cbtc.md) |
+| Generic | Any ERC20 | In Development | [Requirements](docs/sow/evm.md) |
 
-## 🏗️ Architecture
+## Architecture
 
 This is a **multi-package DAML workspace** implementing:
 
@@ -36,7 +36,7 @@ This is a **multi-package DAML workspace** implementing:
 │  ┌─────────────┐    ┌─────────────┐   ┌─────────────┐  ┌─────┐│
 │  │  wayfinder  │    │    usdc     │   │    cbtc     │  │ ... ││
 │  │   (PRIME)   │    │  (Circle)   │   │  (BitSafe)  │  │     ││
-│  │     ✅      │    │     🚧      │   │     🚧      │  │     ││
+│  │   [Ready]   │    │   [WIP]     │   │    [WIP]    │  │     ││
 │  └─────────────┘    └─────────────┘   └─────────────┘  └─────┘│
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
@@ -54,7 +54,7 @@ This is a **multi-package DAML workspace** implementing:
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-## 📦 Repository Structure
+## Repository Structure
 
 ```
 canton-erc20/
@@ -67,10 +67,10 @@ canton-erc20/
 │   ├── bridge-core/                # Core bridge contracts
 │   │
 │   │   # === Client-Specific Bridges ===
-│   ├── bridge-wayfinder/           # ✅ Wayfinder PRIME (Production)
-│   ├── bridge-usdc/                # 🚧 USDC (In Development)
-│   ├── bridge-cbtc/                # 🚧 cBTC (In Development)
-│   ├── bridge-generic/             # 🚧 Generic ERC20 (In Development)
+│   ├── bridge-wayfinder/           # Wayfinder PRIME (Production)
+│   ├── bridge-usdc/                # USDC (In Development)
+│   ├── bridge-cbtc/                # cBTC (In Development)
+│   ├── bridge-generic/             # Generic ERC20 (In Development)
 │   │
 │   │   # === Additional Modules ===
 │   ├── dvp/                        # Delivery vs Payment
@@ -82,7 +82,7 @@ canton-erc20/
 └── README.md                       # This file
 ```
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
@@ -111,48 +111,48 @@ daml script \
 Expected output:
 ```
 >>> 1. Initialization: Deploying contracts...
-    ✓ Token Manager and Bridge Config deployed.
+    [OK] Token Manager and Bridge Config deployed.
 >>> 2. Deposit Flow: Bridging 100.0 PRIME from Ethereum to Alice...
-    ✓ Deposit complete. Alice holds 100.0 PRIME.
+    [OK] Deposit complete. Alice holds 100.0 PRIME.
 >>> 3. Native Transfer: Alice transfers 40.0 PRIME to Bob...
-    ✓ Transfer successful.
+    [OK] Transfer successful.
 >>> 4. Withdrawal Flow: Bob bridges 40.0 PRIME back to Ethereum...
-    ✓ Redemption processed on Canton.
+    [OK] Redemption processed on Canton.
 >>> 5. Final Verification...
-    ✓ BurnEvent confirmed correct.
+    [OK] BurnEvent confirmed correct.
 >>> Test Cycle Complete Successfully!
 ```
 
-## 📋 Package Overview
+## Package Overview
 
 ### Core Infrastructure
 
 | Package | Description | Status |
 |---------|-------------|--------|
-| `common` | Shared types (`TokenMeta`, `EvmAddress`, `ChainRef`) | ✅ Stable |
-| `cip56-token` | CIP-56 compliant token with privacy-preserving transfers | ✅ Stable |
-| `bridge-core` | Reusable bridge contracts (`MintProposal`, `RedeemRequest`, `BurnEvent`) | ✅ Stable |
+| `common` | Shared types (`TokenMeta`, `EvmAddress`, `ChainRef`) | Stable |
+| `cip56-token` | CIP-56 compliant token with privacy-preserving transfers | Stable |
+| `bridge-core` | Reusable bridge contracts (`MintProposal`, `RedeemRequest`, `BurnEvent`) | Stable |
 
 ### Client Bridges
 
 | Package | Token | EVM Contract | Status |
 |---------|-------|--------------|--------|
-| `bridge-wayfinder` | PROMPT | `0x28d38df637db75533bd3f71426f3410a82041544` | ✅ Production |
-| `bridge-usdc` | USDC | TBD | 🚧 Development |
-| `bridge-cbtc` | cBTC | TBD | 🚧 Development |
-| `bridge-generic` | Any ERC20 | Dynamic | 🚧 Development |
+| `bridge-wayfinder` | PROMPT | `0x28d38df637db75533bd3f71426f3410a82041544` | Production |
+| `bridge-usdc` | USDC | TBD | Development |
+| `bridge-cbtc` | cBTC | TBD | Development |
+| `bridge-generic` | Any ERC20 | Dynamic | Development |
 
-## 🔒 Security & Privacy
+## Security & Privacy
 
 All contracts implement Canton privacy best practices:
 
-- ✅ **Need-to-Know Visibility** - Contracts visible only to relevant parties
-- ✅ **No Global Observers** - No admin parties that see all transactions
-- ✅ **Privacy-Preserving Compliance** - Whitelist checks without leaking user lists
-- ✅ **Dual-Signature Authorization** - Multi-party consent for minting
-- ✅ **Locked Asset Pattern** - Prevents double-spending during withdrawals
+- **Need-to-Know Visibility** - Contracts visible only to relevant parties
+- **No Global Observers** - No admin parties that see all transactions
+- **Privacy-Preserving Compliance** - Whitelist checks without leaking user lists
+- **Dual-Signature Authorization** - Multi-party consent for minting
+- **Locked Asset Pattern** - Prevents double-spending during withdrawals
 
-## 🧪 Testing
+## Testing
 
 ### Run All Tests
 
@@ -176,7 +176,7 @@ daml script --dar .daml/dist/bridge-wayfinder-1.0.0.dar \
 | `bridge-core` | `Bridge.Script:testBridgeFlow` | Full bridge cycle |
 | `bridge-wayfinder` | `Wayfinder.Test:testWayfinderBridge` | E2E Wayfinder flow |
 
-## 🔧 Development
+## Development
 
 ### Adding a New Client Bridge
 
@@ -225,17 +225,15 @@ daml script --dar .daml/dist/bridge-wayfinder-1.0.0.dar \
 6. integration-tests   (depends on all packages)
 ```
 
-## 📚 Documentation
+## Documentation
 
 | Document | Description |
 |----------|-------------|
 | [CHANGELOG.md](CHANGELOG.md) | Version history and migration guides |
 | [Wayfinder Testing Guide](daml/bridge-wayfinder/TESTING.md) | End-to-end testing walkthrough |
-| [Phase 0 Quickstart](docs/PHASE_0_QUICKSTART.md) | Getting started guide |
-| [Implementation Roadmap](docs/IMPLEMENTATION_ROADMAP.md) | 18-week implementation plan |
 | [Architecture Proposal](docs/DAML_ARCHITECTURE_PROPOSAL.md) | Technical design document |
 
-## 🤝 Contributing
+## Contributing
 
 ### Branching Strategy
 
@@ -259,15 +257,15 @@ docs(readme): update production status
 chore(deps): bump DAML SDK to 2.10.2
 ```
 
-## 📄 License
+## License
 
 [Apache 2.0](LICENSE)
 
-## 🙋 Support
+## Support
 
 - **Documentation**: See [docs/](docs/)
-- **Issues**: [GitHub Issues](https://github.com/your-org/canton-erc20/issues)
+- **Issues**: [GitHub Issues](https://github.com/ChainSafe/canton-erc20/issues)
 
 ---
 
-**Built with ❤️ using DAML and Canton Network**
+**Built with DAML and Canton Network**
