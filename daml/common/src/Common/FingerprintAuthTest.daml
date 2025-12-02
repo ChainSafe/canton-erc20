@@ -1,0 +1,219 @@
+-- | Test script for Issuer-Centric Fingerprint Resolution
+--
+-- Demonstrates the complete flow where ISSUER controls everything.
+
+module Common.FingerprintAuthTest where
+
+import Daml.Script
+import DA.Time (time)
+import DA.Date (date, Month(..))
+import Common.FingerprintAuth
+import Common.Types (EvmAddress(..))
+
+-- | Complete issuer-centric flow test
+testIssuerCentricFlow : Script ()
+testIssuerCentricFlow = script do
+  -- =========================================================================
+  -- SETUP: Issuer is the participant node operator
+  -- =========================================================================
+  issuer <- allocateParty "BridgeIssuer"
+  
+  -- Issuer allocates a party for user "Alice"
+  -- In reality: issuer.allocateParty("Alice") → "Alice::1220abc..."
+  -- For testing, we simulate this:
+  alice <- allocateParty "Alice"
+  
+  debug "✓ Issuer allocated Party for Alice"
+  
+  -- =========================================================================
+  -- STEP 1: Issuer extracts fingerprint and creates mapping
+  -- =========================================================================
+  --
+  -- When AllocateParty returns "Alice::1220f2fe29866fd6a...", issuer extracts:
+  -- fingerprint = "1220f2fe29866fd6a0009ecc8a64ccdc09f1958bd0f801166baaee469d1251b2eb72"
+  
+  let aliceFingerprint = "1220f2fe29866fd6a0009ecc8a64ccdc09f1958bd0f801166baaee469d1251b2eb72"
+  
+  -- Issuer creates the mapping (only issuer can do this)
+  mappingCid <- submit issuer do
+    createCmd FingerprintMapping with
+      issuer = issuer
+      userParty = alice
+      fingerprint = aliceFingerprint
+      evmAddress = Some (EvmAddress "0x1234567890abcdef1234567890abcdef12345678")
+  
+  debug "✓ Issuer created FingerprintMapping for Alice"
+  
+  -- =========================================================================
+  -- STEP 2: User deposits on EVM (simulated)
+  -- =========================================================================
+  --
+  -- Off-chain: Issuer gives Alice her fingerprint
+  -- Alice deposits on EVM: bridge.depositToCanton(token, 100e18, bytes32(fingerprint))
+  -- Middleware sees DepositToCanton event with the fingerprint
+  
+  let testTime = time (date 2025 Jan 1) 12 0 0
+  
+  -- Middleware (acting as issuer) creates PendingDeposit
+  depositCid <- submit issuer do
+    createCmd PendingDeposit with
+      issuer = issuer
+      fingerprint = aliceFingerprint  -- Raw from EVM event
+      amount = 100.0
+      evmTxHash = "0xabc123def456789..."
+      tokenId = "PROMPT"
+      createdAt = testTime
+  
+  debug "✓ Middleware created PendingDeposit"
+  
+  -- =========================================================================
+  -- STEP 3: Issuer processes the deposit
+  -- =========================================================================
+  --
+  -- Issuer looks up the mapping by fingerprint and processes
+  
+  receiptCid <- submit issuer do
+    exerciseCmd depositCid ProcessDeposit with mappingCid = mappingCid
+  
+  debug "✓ Issuer processed deposit → Receipt created"
+  
+  -- =========================================================================
+  -- VERIFY: Receipt has correct Party
+  -- =========================================================================
+  
+  Some receipt <- queryContractId alice receiptCid
+  assertMsg "Recipient should be Alice" (receipt.recipient == alice)
+  assertMsg "Amount should be 100.0" (receipt.amount == 100.0)
+  assertMsg "Fingerprint preserved" (receipt.fingerprint == aliceFingerprint)
+  
+  debug "✓ All assertions passed!"
+  
+  pure ()
+
+-- | Test: Fingerprint mismatch should fail
+testFingerprintMismatch : Script ()
+testFingerprintMismatch = script do
+  issuer <- allocateParty "BridgeIssuer"
+  alice <- allocateParty "Alice"
+  
+  let aliceFingerprint = "1220aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  let wrongFingerprint = "1220bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  
+  -- Issuer creates mapping for Alice
+  mappingCid <- submit issuer do
+    createCmd FingerprintMapping with
+      issuer = issuer
+      userParty = alice
+      fingerprint = aliceFingerprint
+      evmAddress = None
+  
+  -- Deposit comes in with WRONG fingerprint
+  let testTime = time (date 2025 Jan 1) 12 0 0
+  depositCid <- submit issuer do
+    createCmd PendingDeposit with
+      issuer = issuer
+      fingerprint = wrongFingerprint  -- Different!
+      amount = 50.0
+      evmTxHash = "0x999..."
+      tokenId = "PROMPT"
+      createdAt = testTime
+  
+  -- Processing should FAIL because fingerprints don't match
+  submitMustFail issuer do
+    exerciseCmd depositCid ProcessDeposit with mappingCid = mappingCid
+  
+  debug "✓ Correctly rejected mismatched fingerprint"
+  
+  pure ()
+
+-- | Test: Multiple users with different fingerprints
+testMultipleUsers : Script ()
+testMultipleUsers = script do
+  issuer <- allocateParty "BridgeIssuer"
+  alice <- allocateParty "Alice"
+  bob <- allocateParty "Bob"
+  
+  let aliceFingerprint = "1220aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  let bobFingerprint   = "1220bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  
+  -- Issuer creates mappings for both users
+  aliceMappingCid <- submit issuer do
+    createCmd FingerprintMapping with
+      issuer = issuer
+      userParty = alice
+      fingerprint = aliceFingerprint
+      evmAddress = None
+  
+  bobMappingCid <- submit issuer do
+    createCmd FingerprintMapping with
+      issuer = issuer
+      userParty = bob
+      fingerprint = bobFingerprint
+      evmAddress = None
+  
+  let testTime = time (date 2025 Jan 1) 12 0 0
+  
+  -- Deposit for Alice
+  aliceDepositCid <- submit issuer do
+    createCmd PendingDeposit with
+      issuer = issuer
+      fingerprint = aliceFingerprint
+      amount = 100.0
+      evmTxHash = "0xAliceDeposit"
+      tokenId = "PROMPT"
+      createdAt = testTime
+  
+  -- Deposit for Bob
+  bobDepositCid <- submit issuer do
+    createCmd PendingDeposit with
+      issuer = issuer
+      fingerprint = bobFingerprint
+      amount = 200.0
+      evmTxHash = "0xBobDeposit"
+      tokenId = "PROMPT"
+      createdAt = testTime
+  
+  -- Process both deposits
+  aliceReceiptCid <- submit issuer do
+    exerciseCmd aliceDepositCid ProcessDeposit with mappingCid = aliceMappingCid
+  
+  bobReceiptCid <- submit issuer do
+    exerciseCmd bobDepositCid ProcessDeposit with mappingCid = bobMappingCid
+  
+  -- Verify
+  Some aliceReceipt <- queryContractId alice aliceReceiptCid
+  Some bobReceipt <- queryContractId bob bobReceiptCid
+  
+  assertMsg "Alice's receipt correct" (aliceReceipt.recipient == alice && aliceReceipt.amount == 100.0)
+  assertMsg "Bob's receipt correct" (bobReceipt.recipient == bob && bobReceipt.amount == 200.0)
+  
+  debug "✓ Multiple users handled correctly"
+  
+  pure ()
+
+-- | Test: Update EVM address
+testUpdateEvmAddress : Script ()
+testUpdateEvmAddress = script do
+  issuer <- allocateParty "BridgeIssuer"
+  alice <- allocateParty "Alice"
+  
+  let aliceFingerprint = "1220cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  
+  mappingCid <- submit issuer do
+    createCmd FingerprintMapping with
+      issuer = issuer
+      userParty = alice
+      fingerprint = aliceFingerprint
+      evmAddress = None
+  
+  -- Update EVM address
+  updatedMappingCid <- submit issuer do
+    exerciseCmd mappingCid UpdateUserEvmAddress with
+      newAddress = EvmAddress "0xNewAddress123456789..."
+  
+  Some mapping <- queryContractId issuer updatedMappingCid
+  assertMsg "EVM address updated" (mapping.evmAddress == Some (EvmAddress "0xNewAddress123456789..."))
+  
+  debug "✓ EVM address update works"
+  
+  pure ()

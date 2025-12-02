@@ -1,10 +1,24 @@
+-- | Wayfinder Bridge - Issuer-Centric Implementation
+--
+-- This module implements the Wayfinder PROMPT token bridge using
+-- the issuer-centric model where:
+-- - ISSUER controls all party allocations
+-- - ISSUER knows all fingerprints (from AllocateParty responses)
+-- - ISSUER mints/burns on behalf of users
+-- - End users do NOT manage Canton keys
+
 module Wayfinder.Bridge where
 
 import Common.Types
+import Common.FingerprintAuth
 import CIP56.Token
 import Bridge.Contracts
 
--- Wayfinder PROMPT Token Metadata
+-- =============================================================================
+-- WAYFINDER TOKEN METADATA
+-- =============================================================================
+
+-- | PROMPT token metadata (CIP-56 compliant)
 promptMetadata : ExtendedMetadata
 promptMetadata = ExtendedMetadata with
   name = "Wayfinder PROMPT"
@@ -14,93 +28,159 @@ promptMetadata = ExtendedMetadata with
   dtiCode = None
   regulatoryInfo = Some "ERC20: 0x28d38df637db75533bd3f71426f3410a82041544"
 
--- Configuration for the Wayfinder Bridge
+-- =============================================================================
+-- WAYFINDER BRIDGE CONFIG (Issuer-Centric)
+-- =============================================================================
+
+-- | Configuration for the Wayfinder Bridge
 --
+-- The issuer (operator) controls all bridge operations.
 -- NOTE: Contract key removed for DAML-LF 2.x compatibility.
--- Track WayfinderBridgeConfig ContractId in your application.
 template WayfinderBridgeConfig
   with
-    operator : Party
+    issuer : Party                          -- Bridge issuer/operator
     tokenManagerCid : ContractId CIP56Manager
   where
-    signatory operator
+    signatory issuer
 
-    -- Helper to get metadata for reference
+    -- =========================================================================
+    -- METADATA
+    -- =========================================================================
+    
     nonconsuming choice GetMetadata : ExtendedMetadata
-      controller operator
-      do
-        pure promptMetadata
+      controller issuer
+      do pure promptMetadata
 
     -- =========================================================================
-    -- HASH-BASED MINT (Middleware passes registry ContractId + raw bytes32)
+    -- PARTY MANAGEMENT (Issuer allocates parties for users)
     -- =========================================================================
     
-    -- | Create mint proposal using a PartyHashRegistry entry
-    -- 
-    -- This is the PRIMARY method for deposits. The middleware:
-    -- 1. Monitors DepositToCanton events on Ethereum
-    -- 2. Looks up the PartyHashRegistry ContractId for the recipient hash
-    -- 3. Calls this choice with the registry ContractId
-    -- 4. Canton fetches the registry and creates the proposal
+    -- | Register a user's fingerprint mapping
     --
-    -- NOTE: In SDK 3.x (DAML-LF 2.x), contract keys are not supported.
-    -- The middleware must track PartyHashRegistry ContractIds and pass them here.
-    nonconsuming choice CreateMintProposalByHash : ContractId MintProposalByHash
+    -- Called by issuer after allocating a Party for a user:
+    -- 1. Issuer calls AllocateParty("UserHint") → "UserHint::1220abc...def"
+    -- 2. Issuer extracts fingerprint: "1220abc...def"
+    -- 3. Issuer calls this to create the mapping
+    nonconsuming choice RegisterUser : ContractId FingerprintMapping
       with
-        registryCid   : ContractId PartyHashRegistry  -- Registry entry for recipient
-        amount        : Decimal
-        txHash        : Text    -- EVM transaction hash
-      controller operator
+        userParty   : Party         -- The allocated Party
+        fingerprint : Text          -- Extracted from Party ID
+        evmAddress  : Optional EvmAddress
+      controller issuer
       do
-        -- Fetch the registry to get the recipient Party
-        registry <- fetch registryCid
-        
-        create MintProposalByHash with
-          operator = operator
-          issuer = operator
-          recipient = registry.owner  -- Resolved from registry!
-          recipientHash = registry.partyHash
-          tokenManagerCid = tokenManagerCid
+        create FingerprintMapping with
+          issuer = issuer
+          userParty = userParty
+          fingerprint = fingerprint
+          evmAddress = evmAddress
+
+    -- =========================================================================
+    -- DEPOSIT FLOW: EVM → Canton (Fingerprint-Based)
+    -- =========================================================================
+    
+    -- | Create pending deposit from EVM event
+    --
+    -- Middleware sees DepositToCanton event and calls this.
+    -- The fingerprint comes directly from the EVM event (bytes32).
+    nonconsuming choice CreatePendingDeposit : ContractId PendingDeposit
+      with
+        fingerprint : Text          -- From EVM event (bytes32 as hex)
+        amount      : Decimal
+        evmTxHash   : Text
+        timestamp   : Time
+      controller issuer
+      do
+        create PendingDeposit with
+          issuer = issuer
+          fingerprint = fingerprint
           amount = amount
-          reference = txHash
-          source = ChainRef with chainName = "Ethereum", eventId = txHash
+          evmTxHash = evmTxHash
+          tokenId = "PROMPT"
+          createdAt = timestamp
 
-    -- =========================================================================
-    -- REGISTRATION HELPERS
-    -- =========================================================================
-    
-    -- | Approve a party hash registration request
-    -- 
-    -- Users submit PartyHashRegistrationRequest, operator approves here.
-    -- This creates the PartyHashRegistry entry that enables hash-based mints.
-    nonconsuming choice ApprovePartyRegistration : ContractId PartyHashRegistry
+    -- | Process deposit and mint tokens
+    --
+    -- After creating PendingDeposit, issuer resolves fingerprint and mints.
+    -- This is a convenience choice that does everything in one step.
+    nonconsuming choice ProcessDepositAndMint : ContractId CIP56Holding
       with
-        requestCid : ContractId PartyHashRegistrationRequest
-      controller operator
+        depositCid  : ContractId PendingDeposit
+        mappingCid  : ContractId FingerprintMapping
+      controller issuer
       do
-        exercise requestCid ApproveRegistration
+        -- Process the deposit to get receipt
+        receiptCid <- exercise depositCid ProcessDeposit with mappingCid = mappingCid
+        receipt <- fetch receiptCid
+        
+        -- Mint tokens to the resolved recipient
+        exercise tokenManagerCid Mint with
+          to = receipt.recipient
+          amount = receipt.amount
 
     -- =========================================================================
-    -- STANDARD MINT (Direct recipient - for testing/admin use)
+    -- WITHDRAWAL FLOW: Canton → EVM
     -- =========================================================================
     
-    -- | Helper to initiate a mint proposal (Standard Bridge Flow)
-    -- 
-    -- Use CreateMintProposalByHash for production deposits.
-    -- This is useful for:
-    -- - Testing without registry setup
-    -- - Admin/manual mints
-    -- - Backwards compatibility
+    -- | Initiate withdrawal for a user
+    --
+    -- User requests withdrawal off-chain (via API/UI).
+    -- Issuer creates this to process it.
+    nonconsuming choice InitiateWithdrawal : ContractId WithdrawalRequest
+      with
+        mappingCid      : ContractId FingerprintMapping
+        holdingCid      : ContractId CIP56Holding
+        amount          : Decimal
+        evmDestination  : EvmAddress
+      controller issuer
+      do
+        mapping <- fetch mappingCid
+        
+        create WithdrawalRequest with
+          issuer = issuer
+          userParty = mapping.userParty
+          tokenManagerCid = tokenManagerCid
+          holdingCid = holdingCid
+          amount = amount
+          evmDestination = evmDestination
+          fingerprint = mapping.fingerprint
+
+    -- =========================================================================
+    -- DIRECT MINT (Admin/Testing)
+    -- =========================================================================
+    
+    -- | Direct mint to a Party (bypasses fingerprint lookup)
+    --
+    -- Use for:
+    -- - Testing without fingerprint setup
+    -- - Admin operations
+    -- - Initial token distribution
+    nonconsuming choice DirectMint : ContractId CIP56Holding
+      with
+        recipient : Party
+        amount    : Decimal
+      controller issuer
+      do
+        assertMsg "amount > 0" (amount > 0.0)
+        exercise tokenManagerCid Mint with
+          to = recipient
+          amount = amount
+
+    -- =========================================================================
+    -- LEGACY SUPPORT
+    -- =========================================================================
+    
+    -- | Legacy: Create mint proposal (user-driven flow)
+    -- DEPRECATED: Use ProcessDepositAndMint for issuer-centric flow.
     nonconsuming choice CreateMintProposal : ContractId MintProposal
       with
         recipient : Party
-        amount : Decimal
-        txHash : Text -- EVM Transaction Hash
-      controller operator
+        amount    : Decimal
+        txHash    : Text
+      controller issuer
       do
         create MintProposal with
-          operator = operator
-          issuer = operator
+          operator = issuer
+          issuer = issuer
           recipient = recipient
           tokenManagerCid = tokenManagerCid
           amount = amount

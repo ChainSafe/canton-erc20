@@ -1,28 +1,22 @@
+-- | Common Types for Canton-EVM Bridge
+--
+-- This module contains shared types used across the bridge contracts.
+-- Fingerprint-based party resolution is in Common.FingerprintAuth.
+
 module Common.Types where
 
--- Token metadata (from ERC20.Types)
+-- =============================================================================
+-- TOKEN METADATA
+-- =============================================================================
+
+-- | Basic token metadata (ERC20-style)
 data TokenMeta = TokenMeta with
   name     : Text
   symbol   : Text
   decimals : Int
     deriving (Eq, Show)
 
--- Chain reference for cross-chain events
-data ChainRef = ChainRef with
-  chainName : Text
-  eventId   : Text
-    deriving (Eq, Show)
-
--- Bridge direction
-data BridgeDirection = ToCanton | ToEvm
-  deriving (Eq, Show)
-
--- EVM address type
-newtype EvmAddress = EvmAddress with
-  value : Text
-    deriving (Eq, Show)
-
--- Extended metadata for CIP-56 compliance
+-- | Extended metadata for CIP-56 compliance
 data ExtendedMetadata = ExtendedMetadata with
   name           : Text
   symbol         : Text
@@ -32,7 +26,7 @@ data ExtendedMetadata = ExtendedMetadata with
   regulatoryInfo : Optional Text
     deriving (Eq, Show)
 
--- Convert basic to extended metadata
+-- | Convert basic to extended metadata
 toExtendedMetadata : TokenMeta -> ExtendedMetadata
 toExtendedMetadata tm = ExtendedMetadata with
   name           = tm.name
@@ -42,7 +36,7 @@ toExtendedMetadata tm = ExtendedMetadata with
   dtiCode        = None
   regulatoryInfo = None
 
--- Convert extended to basic metadata
+-- | Convert extended to basic metadata
 toBasicMetadata : ExtendedMetadata -> TokenMeta
 toBasicMetadata em = TokenMeta with
   name     = em.name
@@ -50,81 +44,24 @@ toBasicMetadata em = TokenMeta with
   decimals = em.decimals
 
 -- =============================================================================
--- PARTY HASH REGISTRY: Maps bytes32 hash → Canton Party
+-- CHAIN REFERENCES
 -- =============================================================================
--- 
--- This template enables Canton-side resolution of Ethereum recipient hashes.
--- The middleware passes the raw bytes32 from DepositToCanton events, and
--- Canton resolves it to a Party using this registry.
---
--- Flow:
--- 1. User registers ONCE on Canton: keccak256(partyId) → Party
--- 2. User deposits on Ethereum with their hash as cantonRecipient
--- 3. Middleware passes hash through (no lookup needed)
--- 4. Canton resolves hash → Party and creates MintProposal
---
--- NOTE: Contract keys removed for DAML-LF 2.x compatibility.
--- Lookup is done via queryContractId or by tracking ContractIds in the application.
 
--- | Registry entry linking a keccak256 hash to a Canton Party
---
--- Users create this to register their Canton party with the bridge.
--- The partyHash should be keccak256(fullCantonPartyId) as hex string.
---
--- Example: If Alice's full party ID is "Alice::1220abcd1234..."
---          partyHash = "0x" + keccak256("Alice::1220abcd1234...").hex()
-template PartyHashRegistry
-  with
-    owner     : Party   -- The Canton party this hash resolves to
-    operator  : Party   -- Bridge operator
-    partyHash : Text    -- keccak256(partyId) as hex string "0xABC..."
-    evmAddress : Optional EvmAddress  -- Optional: linked EVM address for withdrawals
-  where
-    signatory owner, operator
-    
-    -- | Update the linked EVM address for withdrawals
-    choice UpdateEvmAddress : ContractId PartyHashRegistry
-      with
-        newEvmAddress : EvmAddress
-      controller owner
-      do
-        create this with evmAddress = Some newEvmAddress
-    
-    -- | Unregister (archive) this entry
-    choice Unregister : ()
-      controller owner
-      do
-        pure ()
+-- | Reference to a cross-chain event
+data ChainRef = ChainRef with
+  chainName : Text   -- e.g., "Ethereum", "Base"
+  eventId   : Text   -- Transaction hash or event ID
+    deriving (Eq, Show)
 
--- | Request to register a party hash (if operator approval is required)
--- 
--- Use this if the bridge requires operator approval for registrations.
-template PartyHashRegistrationRequest
-  with
-    owner     : Party
-    operator  : Party
-    partyHash : Text
-    evmAddress : Optional EvmAddress
-  where
-    signatory owner
-    observer operator
-    
-    -- | Operator approves the registration
-    choice ApproveRegistration : ContractId PartyHashRegistry
-      controller operator
-      do
-        create PartyHashRegistry with
-          owner = owner
-          operator = operator
-          partyHash = partyHash
-          evmAddress = evmAddress
-    
-    -- | Operator rejects the registration
-    choice RejectRegistration : ()
-      controller operator
-      do pure ()
-    
-    -- | Owner cancels the request
-    choice CancelRegistration : ()
-      controller owner
-      do pure ()
+-- =============================================================================
+-- BRIDGE TYPES
+-- =============================================================================
+
+-- | Bridge direction
+data BridgeDirection = ToCanton | ToEvm
+  deriving (Eq, Show)
+
+-- | EVM address type (20 bytes as hex string)
+newtype EvmAddress = EvmAddress with
+  value : Text
+    deriving (Eq, Show)

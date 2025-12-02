@@ -1,87 +1,66 @@
+-- | Wayfinder Script - Simple smoke test for issuer-centric bridge
+--
+-- For comprehensive tests, see Wayfinder.Test
+
 module Wayfinder.Script where
 
 import Daml.Script
+import DA.Time (time)
+import DA.Date (date, Month(..))
 import Common.Types
 import CIP56.Token
-import Bridge.Contracts
 import Wayfinder.Bridge
 
+-- | Simple smoke test for the issuer-centric bridge
 testFullCycle : Script ()
 testFullCycle = script do
-  -- 1. Setup Parties
-  operator <- allocatePartyByHint (PartyIdHint "operator")
-  alice <- allocatePartyByHint (PartyIdHint "alice")
+  -- 1. Setup: Issuer is the participant node operator
+  issuer <- allocateParty "BridgeIssuer"
+  alice <- allocateParty "Alice"
   
   -- 2. Deploy Token Manager for PROMPT
-  tokenManagerCid <- submit operator do
+  tokenManagerCid <- submit issuer do
     createCmd CIP56Manager with
-      issuer = operator
+      issuer = issuer
       meta = promptMetadata
 
-  -- 3. Deploy Bridge Config
-  configCid <- submit operator do
+  -- 3. Deploy Bridge Config (issuer-centric)
+  configCid <- submit issuer do
     createCmd WayfinderBridgeConfig with
-      operator = operator
+      issuer = issuer
       tokenManagerCid = tokenManagerCid
 
-  -- 4. DEPOSIT FLOW (Ethereum -> Canton)
-  -- Simulate operator detecting a lock event on Ethereum
-  let ethTxHash = "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
-  let depositAmount = 100.0
+  -- 4. Register Alice (issuer creates fingerprint mapping)
+  let aliceFingerprint = "1220aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  
+  aliceMappingCid <- submit issuer do
+    exerciseCmd configCid RegisterUser with
+      userParty = alice
+      fingerprint = aliceFingerprint
+      evmAddress = Some (EvmAddress "0xAliceEthWallet...")
 
-  -- Operator creates proposal
-  proposalCid <- submit operator do
-    exerciseCmd configCid CreateMintProposal with
-      recipient = alice
-      amount = depositAmount
-      txHash = ethTxHash
+  -- 5. DEPOSIT FLOW (Ethereum -> Canton)
+  let testTime = time (date 2025 Jan 1) 12 0 0
+  
+  -- Middleware sees deposit event, creates PendingDeposit
+  depositCid <- submit issuer do
+    exerciseCmd configCid CreatePendingDeposit with
+      fingerprint = aliceFingerprint
+      amount = 100.0
+      evmTxHash = "0xDepositTx..."
+      timestamp = testTime
 
-  -- Alice accepts proposal (authorizes mint)
-  authCid <- submit alice do
-    exerciseCmd proposalCid Accept
-
-  -- Operator executes mint
-  holdingCid <- submit operator do
-    exerciseCmd authCid MintOnCanton
+  -- Issuer processes deposit and mints
+  holdingCid <- submit issuer do
+    exerciseCmd configCid ProcessDepositAndMint with
+      depositCid = depositCid
+      mappingCid = aliceMappingCid
 
   -- Verify Alice has funds
   Some holding <- queryContractId alice holdingCid
-  assertMsg "Alice received PROMPT" (holding.amount == depositAmount)
+  assertMsg "Alice received PROMPT" (holding.amount == 100.0)
   assertMsg "Correct Symbol" (holding.meta.symbol == "PROMPT")
 
-  -- 5. WITHDRAWAL FLOW (Canton -> Ethereum)
-  -- Alice requests redemption to her EVM address
-  let evmDest = EvmAddress "0xAliceEthAddress..."
-  let redeemRef = "req-001"
-  
-  -- NEW FLOW: Lock -> RedeemRequest -> Burn
-  
-  -- 1. Alice locks funds for Operator
-  (lockedCid, _) <- submit alice do
-    exerciseCmd holdingCid Lock with
-      receiver = operator
-      value = depositAmount
-      complianceRulesCid = None
-
-  -- 2. Alice creates RedeemRequest pointing to LockedAsset
-  redeemRequestCid <- submit alice do
-    createCmd RedeemRequest with
-      owner = alice
-      operator = operator
-      issuer = operator
-      tokenManagerCid = tokenManagerCid
-      lockedAssetCid = lockedCid
-      amount = depositAmount
-      destination = evmDest
-      reference = redeemRef
-
-  -- 3. Operator approves burn (claims locked asset, then burns it)
-  burnEventCid <- submit operator do
-    exerciseCmd redeemRequestCid ApproveBurn
-
-  -- Verify Burn Event exists (Middleware would listen for this)
-  Some burnEvent <- queryContractId operator burnEventCid
-  assertMsg "Burn destination correct" (burnEvent.destination == evmDest)
-  assertMsg "Burn amount correct" (burnEvent.amount == depositAmount)
+  debug "✓ Smoke test passed!"
   
   pure ()

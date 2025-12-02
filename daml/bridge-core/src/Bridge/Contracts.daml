@@ -1,58 +1,148 @@
+-- | Bridge Contracts for Issuer-Centric Canton-EVM Bridge
+--
+-- In the issuer-centric model:
+-- - ISSUER (participant node) controls all operations
+-- - End users do NOT manage Canton keys
+-- - Issuer mints/burns on behalf of users
+-- - No user "accept" step needed (issuer has authority)
+--
+-- Fingerprint resolution happens via FingerprintMapping in Common.FingerprintAuth
+
 module Bridge.Contracts where
 
 import Common.Types
 import CIP56.Token
 
 -- =============================================================================
--- HASH-BASED MINT PROPOSAL (Resolves recipient from PartyHashRegistry)
+-- DEPOSIT FLOW: EVM → Canton (Issuer-Controlled)
 -- =============================================================================
---
--- This template enables the middleware to pass the raw bytes32 cantonRecipient
--- from Ethereum's DepositToCanton event. Canton resolves it to a Party.
 --
 -- Flow:
--- 1. Ethereum: User calls depositToCanton(token, amount, bytes32 recipientHash)
--- 2. Middleware: Sees event, creates MintProposalByHash with the raw hash
--- 3. Canton: Resolves hash → Party via PartyHashRegistry lookup
--- 4. Recipient: Accepts the proposal (same as standard flow)
+-- 1. User deposits on EVM with their fingerprint
+-- 2. Middleware creates PendingDeposit (see FingerprintAuth)
+-- 3. Issuer resolves fingerprint → Party via FingerprintMapping
+-- 4. Issuer creates DepositReceipt (see FingerprintAuth)
+-- 5. Issuer mints tokens directly to user's Party (this module)
 
--- | Mint proposal created by hash lookup
--- 
--- The operator creates this after looking up the PartyHashRegistry.
--- This is functionally equivalent to MintProposal but documents that
--- the recipient was resolved from a hash.
+-- | Direct mint command for issuer
 --
--- NOTE: Contract keys removed for DAML-LF 2.x compatibility.
--- Deduplication by reference should be handled at the application layer.
-template MintProposalByHash
+-- After resolving fingerprint to Party, issuer uses this to mint.
+-- No user signature needed - issuer acts on behalf of users.
+template MintCommand
   with
-    operator        : Party
     issuer          : Party
-    recipient       : Party          -- Resolved from PartyHashRegistry
-    recipientHash   : Text           -- Original hash from Ethereum (for audit)
+    recipient       : Party         -- Resolved from FingerprintMapping
     tokenManagerCid : ContractId CIP56Manager
     amount          : Decimal
-    reference       : Text           -- EVM tx hash
-    source          : ChainRef
+    evmTxHash       : Text          -- Source EVM transaction
+    fingerprint     : Text          -- Original fingerprint (for audit)
   where
-    signatory operator
+    signatory issuer
     observer recipient
-
-    -- | Recipient accepts, creating authorization for minting
-    choice AcceptByHash : ContractId MintAuthorization
-      controller recipient
+    
+    -- | Execute the mint
+    choice ExecuteMint : ContractId CIP56Holding
+      controller issuer
       do
-        create MintAuthorization with 
-          operator, issuer, recipient, tokenManagerCid, amount, reference, source
+        assertMsg "amount > 0" (amount > 0.0)
+        exercise tokenManagerCid Mint with
+          to = recipient
+          amount = amount
 
 -- =============================================================================
--- STANDARD MINT FLOW (Direct recipient specification)
+-- WITHDRAWAL FLOW: Canton → EVM (Issuer-Controlled)
 -- =============================================================================
-
--- | Mint proposal for bridging tokens from EVM to Canton
 --
--- NOTE: Contract keys removed for DAML-LF 2.x compatibility.
--- Deduplication by reference should be handled at the application layer.
+-- Flow:
+-- 1. Issuer initiates withdrawal on behalf of user (off-chain request)
+-- 2. Issuer locks user's tokens
+-- 3. Issuer burns and creates WithdrawalEvent
+-- 4. Middleware processes WithdrawalEvent → releases on EVM
+
+-- | Withdrawal request created by issuer on behalf of user
+--
+-- In issuer-centric model, user requests withdrawal off-chain.
+-- Issuer creates this to process the withdrawal.
+template WithdrawalRequest
+  with
+    issuer          : Party
+    userParty       : Party         -- The Canton party (user doesn't sign)
+    tokenManagerCid : ContractId CIP56Manager
+    holdingCid      : ContractId CIP56Holding  -- User's tokens to withdraw
+    amount          : Decimal
+    evmDestination  : EvmAddress    -- Where to send on EVM
+    fingerprint     : Text          -- User's fingerprint (for audit)
+  where
+    signatory issuer
+    observer userParty
+    
+    -- | Process the withdrawal
+    choice ProcessWithdrawal : ContractId WithdrawalEvent
+      controller issuer
+      do
+        -- Verify holding
+        holding <- fetch holdingCid
+        assertMsg "Holding owner matches" (holding.owner == userParty)
+        assertMsg "Amount matches" (holding.amount >= amount)
+        
+        -- Burn the tokens
+        exercise tokenManagerCid Burn with holdingCid = holdingCid
+        
+        -- Create event for middleware
+        create WithdrawalEvent with
+          issuer = issuer
+          userParty = userParty
+          evmDestination = evmDestination
+          amount = amount
+          fingerprint = fingerprint
+          status = Pending
+
+-- | Withdrawal event for middleware to process
+template WithdrawalEvent
+  with
+    issuer          : Party
+    userParty       : Party
+    evmDestination  : EvmAddress
+    amount          : Decimal
+    fingerprint     : Text
+    status          : WithdrawalStatus
+  where
+    signatory issuer
+    observer userParty
+    
+    -- | Mark as completed after EVM release
+    choice CompleteWithdrawal : ContractId WithdrawalEvent
+      with
+        evmTxHash : Text
+      controller issuer
+      do
+        create this with status = Completed evmTxHash
+    
+    -- | Mark as failed
+    choice FailWithdrawal : ContractId WithdrawalEvent
+      with
+        reason : Text
+      controller issuer
+      do
+        create this with status = Failed reason
+
+-- | Withdrawal status
+data WithdrawalStatus 
+  = Pending
+  | Completed Text   -- EVM tx hash
+  | Failed Text      -- Reason
+  deriving (Eq, Show)
+
+-- =============================================================================
+-- LEGACY TEMPLATES (For Backwards Compatibility)
+-- =============================================================================
+-- These templates support the older user-driven flows.
+-- Use the issuer-centric templates above for new integrations.
+
+-- | Legacy: Mint proposal requiring user acceptance
+-- 
+-- DEPRECATED: Use MintCommand for issuer-centric flow.
+-- Kept for backwards compatibility with existing integrations.
 template MintProposal
   with
     operator        : Party
@@ -60,7 +150,7 @@ template MintProposal
     recipient       : Party
     tokenManagerCid : ContractId CIP56Manager
     amount          : Decimal
-    reference       : Text -- external transaction reference (e.g., EVM tx hash)
+    reference       : Text
     source          : ChainRef
   where
     signatory operator
@@ -69,12 +159,9 @@ template MintProposal
     choice Accept : ContractId MintAuthorization
       controller recipient
       do
-        -- Choice is consuming, so contract is automatically archived
         create MintAuthorization with operator, issuer, recipient, tokenManagerCid, amount, reference, source
 
--- Authorization for minting (after recipient accepts)
---
--- NOTE: Contract keys removed for DAML-LF 2.x compatibility.
+-- | Legacy: Authorization after user accepts
 template MintAuthorization
   with
     operator        : Party
@@ -91,14 +178,13 @@ template MintAuthorization
       controller operator
       do
         assertMsg "amount > 0" (amount > 0.0)
-        -- Choice is consuming, so contract is automatically archived
         exercise tokenManagerCid Mint with
           to     = recipient
           amount = amount
 
--- Locked asset for redemption (Created by User, Locks the Holding)
---
--- NOTE: Contract keys removed for DAML-LF 2.x compatibility.
+-- | Legacy: User-initiated redeem request
+-- 
+-- DEPRECATED: Use WithdrawalRequest for issuer-centric flow.
 template RedeemRequest
   with
     owner           : Party
@@ -120,26 +206,12 @@ template RedeemRequest
         assertMsg "owner matches request" (lockedAsset.sender == owner)
         assertMsg "amount matches request" (lockedAsset.amount == amount)
         
-        -- Burn the locked asset (CompleteTransfer -> Holding -> Burn? No, that unlocks it first)
-        -- We need a way to BURN a LockedAsset directly or unlock-and-burn atomically.
-        -- Since LockedAsset is in CIP56.Token, we can't modify it easily here without circular deps?
-        -- Wait, CIP56.Token imports nothing from Bridge.Contracts.
-        -- LockedAsset has `Unlock` (refund) and `CompleteTransfer` (deliver).
-        -- We need a `Burn` choice on LockedAsset? Or unlock it to Operator then Operator burns it?
-        
-        -- Pattern:
-        -- 1. User Locks asset for Operator.
-        -- 2. User creates RedeemRequest pointing to LockedAsset.
-        -- 3. Operator exercises `CompleteTransfer` on LockedAsset (claiming it).
-        -- 4. Operator exercises `Burn` on the resulting Holding.
-        
         holdingCid <- exercise lockedAssetCid CompleteTransfer with complianceProofCid = None
         exercise tokenManagerCid Burn with holdingCid = holdingCid
         
-        -- Choice is consuming, so contract is automatically archived
         create BurnEvent with operator, owner, destination, amount, reference, direction = ToEvm
 
--- Event emitted after burn (for middleware to process on EVM side)
+-- | Legacy: Burn event for middleware
 template BurnEvent
   with
     operator    : Party
