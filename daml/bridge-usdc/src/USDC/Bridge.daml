@@ -9,8 +9,6 @@ module USDC.Bridge where
 -- - CIP-86 compliance patterns
 -- - Circle attestation verification
 
-import Common.Types
-
 -- Placeholder for USDC bridge configuration
 data USDCBridgeConfig = USDCBridgeConfig with
   operator     : Party

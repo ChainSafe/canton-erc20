@@ -9,8 +9,6 @@ module CBTC.Bridge where
 -- - Custody patterns
 -- - Vault authorization templates
 
-import Common.Types
-
 -- Placeholder for CBTC bridge configuration
 data CBTCBridgeConfig = CBTCBridgeConfig with
   operator      : Party

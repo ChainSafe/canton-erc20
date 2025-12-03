@@ -10,4 +10,5 @@ dependencies:
 
 data-dependencies:
   - ../common/.daml/dist/common-1.0.0.dar
-  - ../cip56-token/.daml/dist/cip56-token-1.0.0.dar
+  # cip56-token will be added when implementation uses tokens
+  # - ../cip56-token/.daml/dist/cip56-token-1.0.0.dar

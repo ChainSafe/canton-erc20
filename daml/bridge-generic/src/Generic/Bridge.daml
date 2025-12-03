@@ -9,8 +9,6 @@ module Generic.Bridge where
 -- - Multi-token support
 -- - ERC20 → CIP-56 conversion
 
-import Common.Types
-
 -- Placeholder for generic bridge configuration
 data GenericBridgeConfig = GenericBridgeConfig with
   operator        : Party
