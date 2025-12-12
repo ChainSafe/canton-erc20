@@ -1,5 +1,5 @@
 name: integration-tests
-version: 1.0.0
+version: 1.0.1
 sdk-version: 3.4.8
 
 source: .
@@ -8,9 +8,11 @@ dependencies:
   - daml-stdlib
   - daml-script
 
-# Dependencies will be added as integration tests are written
-# data-dependencies:
-#   - ../common/.daml/dist/common-1.0.0.dar
-#   - ../cip56-token/.daml/dist/cip56-token-1.0.0.dar
-#   - ../bridge-core/.daml/dist/bridge-core-1.0.0.dar
-#   - ../bridge-wayfinder/.daml/dist/bridge-wayfinder-1.0.0.dar
+data-dependencies:
+  - ../common/.daml/dist/common-1.0.1.dar
+  - ../cip56-token/.daml/dist/cip56-token-1.0.1.dar
+  - ../bridge-core/.daml/dist/bridge-core-1.0.1.dar
+  - ../bridge-usdc/.daml/dist/bridge-usdc-1.0.1.dar
+  - ../bridge-cbtc/.daml/dist/bridge-cbtc-1.0.1.dar
+  - ../bridge-generic/.daml/dist/bridge-generic-1.0.1.dar
+  - ../dvp/.daml/dist/dvp-1.0.1.dar

@@ -83,10 +83,11 @@ template WithdrawalRequest
         -- Verify holding
         holding <- fetch holdingCid
         assertMsg "Holding owner matches" (holding.owner == userParty)
-        assertMsg "Amount matches" (holding.amount >= amount)
+        assertMsg "Withdrawal amount exceeds holding balance" (holding.amount >= amount)
+        assertMsg "Amount must be positive" (amount > 0.0)
         
-        -- Burn the tokens
-        exercise tokenManagerCid Burn with holdingCid = holdingCid
+        -- Burn the tokens (partial burn returns remainder to user)
+        exercise tokenManagerCid Burn with holdingCid = holdingCid, amount = amount
         
         -- Create event for middleware
         create WithdrawalEvent with
@@ -207,7 +208,7 @@ template RedeemRequest
         assertMsg "amount matches request" (lockedAsset.amount == amount)
         
         holdingCid <- exercise lockedAssetCid CompleteTransfer with complianceProofCid = None
-        exercise tokenManagerCid Burn with holdingCid = holdingCid
+        exercise tokenManagerCid Burn with holdingCid = holdingCid, amount = amount
         
         create BurnEvent with operator, owner, destination, amount, reference, direction = ToEvm
 

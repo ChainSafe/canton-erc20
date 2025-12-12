@@ -85,14 +85,28 @@ template CIP56Manager
         create CIP56Holding with issuer, owner = to, amount, meta
 
     -- Burn tokens (nonconsuming so manager can be reused)
-    nonconsuming choice Burn : ()
+    -- Returns remainder holding if partial burn, None if full burn
+    nonconsuming choice Burn : Optional (ContractId CIP56Holding)
       with
         holdingCid : ContractId CIP56Holding
+        amount : Decimal
       controller issuer
       do
         holding <- fetch holdingCid
         assertMsg "issuer matches" (holding.issuer == issuer)
+        assertMsg "amount > 0" (amount > 0.0)
+        assertMsg "insufficient balance" (holding.amount >= amount)
         archive holdingCid
+        -- Create remainder holding if partial burn
+        if holding.amount > amount
+          then do
+            cid <- create CIP56Holding with
+              issuer = holding.issuer
+              owner = holding.owner
+              amount = holding.amount - amount
+              meta = holding.meta
+            pure (Some cid)
+          else pure None
 
     -- Update token metadata
     choice UpdateMetadata : ContractId CIP56Manager

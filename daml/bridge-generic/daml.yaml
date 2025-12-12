@@ -1,5 +1,5 @@
 name: bridge-generic
-version: 1.0.0
+version: 1.0.1
 sdk-version: 3.4.8
 
 source: src
@@ -8,8 +8,7 @@ dependencies:
   - daml-stdlib
   - daml-script
 
-# data-dependencies will be added when implementation begins
-# data-dependencies:
-#   - ../common/.daml/dist/common-1.0.0.dar
-#   - ../cip56-token/.daml/dist/cip56-token-1.0.0.dar
-#   - ../bridge-core/.daml/dist/bridge-core-1.0.0.dar
+data-dependencies:
+  - ../common/.daml/dist/common-1.0.1.dar
+  - ../cip56-token/.daml/dist/cip56-token-1.0.1.dar
+  - ../bridge-core/.daml/dist/bridge-core-1.0.1.dar
