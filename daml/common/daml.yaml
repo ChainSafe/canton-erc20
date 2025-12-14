@@ -1,9 +1,8 @@
 name: common
-version: 1.0.1
+version: 1.0.2
 sdk-version: 3.4.8
 
 source: src
 dependencies:
   - daml-prim
   - daml-stdlib
-  - daml-script

@@ -1,13 +1,12 @@
 name: dvp
-version: 1.0.1
+version: 1.0.2
 sdk-version: 3.4.8
 
 source: src
 dependencies:
   - daml-prim
   - daml-stdlib
-  - daml-script
 
 data-dependencies:
-  - ../common/.daml/dist/common-1.0.1.dar
-  - ../cip56-token/.daml/dist/cip56-token-1.0.1.dar
+  - ../common/.daml/dist/common-1.0.2.dar
+  - ../cip56-token/.daml/dist/cip56-token-1.0.2.dar

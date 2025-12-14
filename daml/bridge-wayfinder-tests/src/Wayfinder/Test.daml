@@ -11,7 +11,6 @@ import Daml.Script
 import DA.Time (time)
 import DA.Date (date, Month(..))
 import Common.Types
-import Common.FingerprintAuth
 import CIP56.Token
 import Bridge.Contracts
 import Wayfinder.Bridge
