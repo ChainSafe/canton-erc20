@@ -1,4 +1,6 @@
-name: bridge-cbtc
+# Test package for bridge-core module
+# Contains test scripts that use daml-script
+name: bridge-core-tests
 version: 1.0.1
 sdk-version: 3.4.8
 
@@ -6,8 +8,9 @@ source: src
 dependencies:
   - daml-prim
   - daml-stdlib
-
+  - daml-script
 data-dependencies:
   - ../common/.daml/dist/common-1.0.1.dar
   - ../cip56-token/.daml/dist/cip56-token-1.0.1.dar
   - ../bridge-core/.daml/dist/bridge-core-1.0.1.dar
+

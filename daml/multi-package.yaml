@@ -11,22 +11,27 @@
 #                 └── bridge-generic    - In Development
 #     └── dvp
 #
+# Test packages (with daml-script) depend on production packages
 # integration-tests depends on all packages
 
 packages:
-  # === Core Infrastructure ===
+  # === Core Infrastructure (Production) ===
   - ./common
   - ./cip56-token
   - ./bridge-core
   
-  # === Client-Specific Bridges ===
+  # === Client-Specific Bridges (Production) ===
   - ./bridge-wayfinder    # Wayfinder PRIME token - PRODUCTION READY
   - ./bridge-usdc         # Circle USDC - In Development
   - ./bridge-cbtc         # BitSafe cBTC - In Development
   - ./bridge-generic      # Generic ERC20 - In Development
   
-  # === Additional Modules ===
+  # === Additional Modules (Production) ===
   - ./dvp
   
-  # === Testing ===
+  # === Test Packages (with daml-script) ===
+  - ./common-tests
+  - ./cip56-token-tests
+  - ./bridge-core-tests
+  - ./bridge-wayfinder-tests
   - ./integration-tests
