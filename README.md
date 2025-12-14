@@ -1,24 +1,22 @@
-# Canton ERC-20 Bridge - DAML Contracts
+# Canton ERC-20 Bridge - Daml Contracts
 
-> **DAML smart contracts for bridging ERC-20 tokens between Ethereum and Canton Network**
+> **Daml smart contracts for bridging ERC-20 tokens between Ethereum and Canton Network**
 
-[![DAML SDK](https://img.shields.io/badge/DAML%20SDK-2.10.2-blue)](https://docs.daml.com/)
+[![Daml SDK](https://img.shields.io/badge/Daml%20SDK-3.4.8-blue)](https://docs.daml.com/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
 
-This repository contains the DAML implementation of a token bridge connecting ERC-20 tokens on Ethereum with CIP-56 compliant tokens on Canton Network. The Go middleware implementation is maintained separately.
+This repository contains the Daml implementation of a token bridge connecting ERC-20 tokens on Ethereum with CIP-56 compliant tokens on Canton Network. The Go middleware implementation is maintained in the parent [canton-middleware](https://github.com/ChainSafe/canton-middleware) repository.
 
 ## Production Status
 
-| Bridge | Token | Status | Documentation |
-|--------|-------|--------|---------------|
-| **Wayfinder** | PROMPT (`0x28d38...1544`) | **Production Ready** | [Testing Guide](daml/bridge-wayfinder/TESTING.md) |
-| USDC | USDC | In Development | [Requirements](docs/sow/usdc.md) |
-| cBTC | cBTC | In Development | [Requirements](docs/sow/cbtc.md) |
-| Generic | Any ERC20 | In Development | [Requirements](docs/sow/evm.md) |
+| Bridge | Token | Status | Network |
+|--------|-------|--------|---------|
+| **Wayfinder** | PROMPT | **Production Ready** | 5North DevNet / Mainnet |
+| USDC | USDC | In Development | — |
+| cBTC | cBTC | In Development | — |
+| Generic | Any ERC20 | In Development | — |
 
 ## Architecture
-
-This is a **multi-package DAML workspace** implementing:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -35,8 +33,8 @@ This is a **multi-package DAML workspace** implementing:
 │         ▼                    ▼                ▼             ▼  │
 │  ┌─────────────┐    ┌─────────────┐   ┌─────────────┐  ┌─────┐│
 │  │  wayfinder  │    │    usdc     │   │    cbtc     │  │ ... ││
-│  │   (PRIME)   │    │  (Circle)   │   │  (BitSafe)  │  │     ││
-│  │   [Ready]   │    │   [WIP]     │   │    [WIP]    │  │     ││
+│  │  (PROMPT)   │    │  (Circle)   │   │  (BitSafe)  │  │     ││
+│  │ [PRODUCTION]│    │   [WIP]     │   │    [WIP]    │  │     ││
 │  └─────────────┘    └─────────────┘   └─────────────┘  └─────┘│
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
@@ -45,12 +43,14 @@ This is a **multi-package DAML workspace** implementing:
 ┌─────────────────────────────────────────────────────────────────┐
 │                      GO MIDDLEWARE                              │
 │              (Event Streaming + Command Submission)             │
+│                    canton-middleware repo                       │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                        ETHEREUM                                 │
-│                    (ERC-20 Contracts)                           │
+│                   (ERC-20 + Bridge Contracts)                   │
+│                ethereum-wayfinder submodule                     │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -58,52 +58,70 @@ This is a **multi-package DAML workspace** implementing:
 
 ```
 canton-erc20/
-├── daml/                           # DAML packages
-│   ├── multi-package.yaml          # Workspace configuration
+├── daml/                               # Daml packages
+│   ├── multi-package.yaml              # Workspace configuration
 │   │
-│   │   # === Core Infrastructure ===
-│   ├── common/                     # Shared types and utilities
-│   ├── cip56-token/                # CIP-56 token standard
-│   ├── bridge-core/                # Core bridge contracts
+│   │   # === Core Infrastructure (Production) ===
+│   ├── common/                         # Shared types and utilities
+│   ├── cip56-token/                    # CIP-56 token standard
+│   ├── bridge-core/                    # Core bridge contracts
 │   │
-│   │   # === Client-Specific Bridges ===
-│   ├── bridge-wayfinder/           # Wayfinder PRIME (Production)
-│   ├── bridge-usdc/                # USDC (In Development)
-│   ├── bridge-cbtc/                # cBTC (In Development)
-│   ├── bridge-generic/             # Generic ERC20 (In Development)
+│   │   # === Client-Specific Bridges (Production) ===
+│   ├── bridge-wayfinder/               # Wayfinder PROMPT (Production)
+│   ├── bridge-usdc/                    # USDC (In Development)
+│   ├── bridge-cbtc/                    # cBTC (In Development)
+│   ├── bridge-generic/                 # Generic ERC20 (In Development)
 │   │
-│   │   # === Additional Modules ===
-│   ├── dvp/                        # Delivery vs Payment
-│   └── integration-tests/          # End-to-end tests
+│   │   # === Additional Modules (Production) ===
+│   ├── dvp/                            # Delivery vs Payment
+│   │
+│   │   # === Test Packages (with daml-script) ===
+│   ├── common-tests/                   # Tests for common
+│   ├── cip56-token-tests/              # Tests for cip56-token
+│   ├── bridge-core-tests/              # Tests for bridge-core
+│   ├── bridge-wayfinder-tests/         # Tests for bridge-wayfinder
+│   └── integration-tests/              # End-to-end tests
 │
-├── docs/                           # Documentation
-├── scripts/                        # Build and test scripts
-├── CHANGELOG.md                    # Version history
-└── README.md                       # This file
+├── docs/                               # Documentation
+│   └── DAML_ARCHITECTURE_PROPOSAL.md   # Technical design document
+├── CHANGELOG.md                        # Version history
+└── README.md                           # This file
 ```
 
 ## Quick Start
 
 ### Prerequisites
 
-- **DAML SDK 2.10.2** - [Install Guide](https://docs.daml.com/getting-started/installation.html)
+- **Daml SDK 3.4.8** - [Install Guide](https://docs.daml.com/getting-started/installation.html)
 
 ```bash
-daml version  # Should show 2.10.2
+daml version  # Should show 3.4.8
 ```
 
 ### Build All Packages
 
+From the parent `canton-middleware` repository:
+
 ```bash
-./scripts/build-all.sh
+./scripts/build-dars.sh
 ```
 
-### Run Wayfinder Bridge Tests
+Or build individually from this directory:
 
 ```bash
-cd daml/bridge-wayfinder
+cd daml/common && daml build --no-legacy-assistant-warning
+cd ../cip56-token && daml build --no-legacy-assistant-warning
+cd ../bridge-core && daml build --no-legacy-assistant-warning
+cd ../bridge-wayfinder && daml build --no-legacy-assistant-warning
+```
+
+### Run Tests
+
+```bash
+# Run Wayfinder bridge test
+cd daml/bridge-wayfinder-tests
 daml script \
-  --dar .daml/dist/bridge-wayfinder-1.0.0.dar \
+  --dar .daml/dist/bridge-wayfinder-tests-1.0.1.dar \
   --script-name Wayfinder.Test:testWayfinderBridge \
   --ide-ledger
 ```
@@ -112,11 +130,11 @@ Expected output:
 ```
 >>> 1. Initialization: Deploying contracts...
     [OK] Token Manager and Bridge Config deployed.
->>> 2. Deposit Flow: Bridging 100.0 PRIME from Ethereum to Alice...
-    [OK] Deposit complete. Alice holds 100.0 PRIME.
->>> 3. Native Transfer: Alice transfers 40.0 PRIME to Bob...
+>>> 2. Deposit Flow: Bridging 100.0 PROMPT from Ethereum to Alice...
+    [OK] Deposit complete. Alice holds 100.0 PROMPT.
+>>> 3. Native Transfer: Alice transfers 40.0 PROMPT to Bob...
     [OK] Transfer successful.
->>> 4. Withdrawal Flow: Bob bridges 40.0 PRIME back to Ethereum...
+>>> 4. Withdrawal Flow: Bob bridges 40.0 PROMPT back to Ethereum...
     [OK] Redemption processed on Canton.
 >>> 5. Final Verification...
     [OK] BurnEvent confirmed correct.
@@ -125,22 +143,74 @@ Expected output:
 
 ## Package Overview
 
-### Core Infrastructure
+### Production Packages
+
+These packages are deployed to Canton Network and **do not** include `daml-script` to avoid bloating the package store.
 
 | Package | Description | Status |
 |---------|-------------|--------|
-| `common` | Shared types (`TokenMeta`, `EvmAddress`, `ChainRef`) | Stable |
+| `common` | Shared types (`TokenMeta`, `EvmAddress`, `ChainRef`, `FingerprintAuth`) | Stable |
 | `cip56-token` | CIP-56 compliant token with privacy-preserving transfers | Stable |
 | `bridge-core` | Reusable bridge contracts (`MintProposal`, `RedeemRequest`, `BurnEvent`) | Stable |
+| `bridge-wayfinder` | Wayfinder PROMPT token bridge | **Production** |
+| `bridge-usdc` | Circle USDC bridge | Development |
+| `bridge-cbtc` | BitSafe cBTC bridge | Development |
+| `bridge-generic` | Generic ERC20 bridge | Development |
+| `dvp` | Delivery vs Payment settlement | Development |
 
-### Client Bridges
+### Test Packages
 
-| Package | Token | EVM Contract | Status |
-|---------|-------|--------------|--------|
-| `bridge-wayfinder` | PROMPT | `0x28d38df637db75533bd3f71426f3410a82041544` | Production |
-| `bridge-usdc` | USDC | TBD | Development |
-| `bridge-cbtc` | cBTC | TBD | Development |
-| `bridge-generic` | Any ERC20 | Dynamic | Development |
+Test packages include `daml-script` and are **not** deployed to production ledgers.
+
+| Package | Tests |
+|---------|-------|
+| `common-tests` | `FingerprintAuthTest` |
+| `cip56-token-tests` | Mint, Transfer, Compliance flows |
+| `bridge-core-tests` | Full bridge cycle |
+| `bridge-wayfinder-tests` | E2E Wayfinder flow |
+| `integration-tests` | Cross-package integration |
+
+### Package Dependency Graph
+
+```
+common                         (no dependencies)
+  └── cip56-token             
+        └── bridge-core       
+              ├── bridge-wayfinder   [PRODUCTION]
+              ├── bridge-usdc        [WIP]
+              ├── bridge-cbtc        [WIP]
+              └── bridge-generic     [WIP]
+  └── dvp
+```
+
+## Testing
+
+### Test Individual Package
+
+```bash
+# CIP-56 Token tests
+cd daml/cip56-token-tests
+daml script --dar .daml/dist/cip56-token-tests-1.0.1.dar \
+  --script-name CIP56.Script:test --ide-ledger
+
+# Bridge Core tests
+cd daml/bridge-core-tests
+daml script --dar .daml/dist/bridge-core-tests-1.0.1.dar \
+  --script-name Bridge.Script:testBridgeFlow --ide-ledger
+
+# Wayfinder tests
+cd daml/bridge-wayfinder-tests
+daml script --dar .daml/dist/bridge-wayfinder-tests-1.0.1.dar \
+  --script-name Wayfinder.Test:testWayfinderBridge --ide-ledger
+```
+
+### Test Coverage
+
+| Package | Test Script | Coverage |
+|---------|-------------|----------|
+| `cip56-token-tests` | `CIP56.Script:test` | Mint, Transfer, Compliance |
+| `bridge-core-tests` | `Bridge.Script:testBridgeFlow` | Full bridge cycle |
+| `bridge-wayfinder-tests` | `Wayfinder.Test:testWayfinderBridge` | E2E Wayfinder flow |
 
 ## Security & Privacy
 
@@ -152,110 +222,12 @@ All contracts implement Canton privacy best practices:
 - **Dual-Signature Authorization** - Multi-party consent for minting
 - **Locked Asset Pattern** - Prevents double-spending during withdrawals
 
-## Testing
-
-### Run All Tests
-
-```bash
-./scripts/test-all.sh
-```
-
-### Test Specific Package
-
-```bash
-cd daml/bridge-wayfinder
-daml script --dar .daml/dist/bridge-wayfinder-1.0.0.dar \
-  --script-name Wayfinder.Test:testWayfinderBridge --ide-ledger
-```
-
-### Test Coverage
-
-| Package | Test Script | Coverage |
-|---------|-------------|----------|
-| `cip56-token` | `CIP56.Script:test` | Mint, Transfer, Compliance |
-| `bridge-core` | `Bridge.Script:testBridgeFlow` | Full bridge cycle |
-| `bridge-wayfinder` | `Wayfinder.Test:testWayfinderBridge` | E2E Wayfinder flow |
-
-## Development
-
-### Adding a New Client Bridge
-
-1. Create package directory:
-   ```bash
-   mkdir -p daml/bridge-mytoken/src/MyToken
-   ```
-
-2. Create `daml.yaml`:
-   ```yaml
-   name: bridge-mytoken
-   version: 1.0.0
-   sdk-version: 2.10.2
-   source: src
-   dependencies:
-     - daml-prim
-     - daml-stdlib
-     - daml-script
-   data-dependencies:
-     - ../common/.daml/dist/common-1.0.0.dar
-     - ../cip56-token/.daml/dist/cip56-token-1.0.0.dar
-     - ../bridge-core/.daml/dist/bridge-core-1.0.0.dar
-   ```
-
-3. Implement bridge module (use `bridge-wayfinder` as template)
-
-4. Add to `multi-package.yaml`
-
-5. Build and test:
-   ```bash
-   ./scripts/build-all.sh
-   ./scripts/test-all.sh
-   ```
-
-### Package Dependency Order
-
-```
-1. common              (no dependencies)
-2. cip56-token         (depends on common)
-3. bridge-core         (depends on common, cip56-token)
-4. bridge-wayfinder    (depends on bridge-core)
-   bridge-usdc         (depends on bridge-core)
-   bridge-cbtc         (depends on bridge-core)
-   bridge-generic      (depends on bridge-core)
-5. dvp                 (depends on common)
-6. integration-tests   (depends on all packages)
-```
-
 ## Documentation
 
 | Document | Description |
 |----------|-------------|
 | [CHANGELOG.md](CHANGELOG.md) | Version history and migration guides |
-| [Wayfinder Testing Guide](daml/bridge-wayfinder/TESTING.md) | End-to-end testing walkthrough |
-| [Architecture Proposal](docs/DAML_ARCHITECTURE_PROPOSAL.md) | Technical design document |
-
-## Contributing
-
-### Branching Strategy
-
-```
-main                    # Production-ready code
-├── develop             # Integration branch
-│   ├── feature/usdc-bridge
-│   ├── feature/cbtc-bridge
-│   └── feature/generic-bridge
-└── release/v1.0.0      # Release branches
-```
-
-### Commit Convention
-
-Use [Conventional Commits](https://www.conventionalcommits.org/):
-
-```
-feat(wayfinder): add full bridge lifecycle test
-fix(cip56): make Manager choices nonconsuming
-docs(readme): update production status
-chore(deps): bump DAML SDK to 2.10.2
-```
+| [Architecture Proposal](docs/DAML_ARCHITECTURE_PROPOSAL.md) | Technical design and roadmap |
 
 ## License
 
@@ -268,4 +240,3 @@ chore(deps): bump DAML SDK to 2.10.2
 
 ---
 
-**Built with DAML and Canton Network**
