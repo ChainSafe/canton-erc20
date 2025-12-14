@@ -121,7 +121,7 @@ cd ../bridge-wayfinder && daml build --no-legacy-assistant-warning
 # Run Wayfinder bridge test
 cd daml/bridge-wayfinder-tests
 daml script \
-  --dar .daml/dist/bridge-wayfinder-tests-1.0.1.dar \
+  --dar .daml/dist/bridge-wayfinder-tests-1.0.2.dar \
   --script-name Wayfinder.Test:testWayfinderBridge \
   --ide-ledger
 ```
@@ -190,17 +190,17 @@ common                         (no dependencies)
 ```bash
 # CIP-56 Token tests
 cd daml/cip56-token-tests
-daml script --dar .daml/dist/cip56-token-tests-1.0.1.dar \
+daml script --dar .daml/dist/cip56-token-tests-1.0.2.dar \
   --script-name CIP56.Script:test --ide-ledger
 
 # Bridge Core tests
 cd daml/bridge-core-tests
-daml script --dar .daml/dist/bridge-core-tests-1.0.1.dar \
+daml script --dar .daml/dist/bridge-core-tests-1.0.2.dar \
   --script-name Bridge.Script:testBridgeFlow --ide-ledger
 
 # Wayfinder tests
 cd daml/bridge-wayfinder-tests
-daml script --dar .daml/dist/bridge-wayfinder-tests-1.0.1.dar \
+daml script --dar .daml/dist/bridge-wayfinder-tests-1.0.2.dar \
   --script-name Wayfinder.Test:testWayfinderBridge --ide-ledger
 ```
 
