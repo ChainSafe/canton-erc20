@@ -121,24 +121,17 @@ cd ../bridge-wayfinder && daml build --no-legacy-assistant-warning
 # Run Wayfinder bridge test
 cd daml/bridge-wayfinder-tests
 daml script \
-  --dar .daml/dist/bridge-wayfinder-tests-1.0.2.dar \
+  --dar .daml/dist/bridge-wayfinder-tests-1.1.0.dar \
   --script-name Wayfinder.Test:testWayfinderBridge \
   --ide-ledger
 ```
 
 Expected output:
 ```
->>> 1. Initialization: Deploying contracts...
-    [OK] Token Manager and Bridge Config deployed.
->>> 2. Deposit Flow: Bridging 100.0 PROMPT from Ethereum to Alice...
-    [OK] Deposit complete. Alice holds 100.0 PROMPT.
->>> 3. Native Transfer: Alice transfers 40.0 PROMPT to Bob...
-    [OK] Transfer successful.
->>> 4. Withdrawal Flow: Bob bridges 40.0 PROMPT back to Ethereum...
-    [OK] Redemption processed on Canton.
->>> 5. Final Verification...
-    [OK] BurnEvent confirmed correct.
->>> Test Cycle Complete Successfully!
+>>> Deposit flow complete: Alice has 1000.0 tokens
+>>> Withdrawal initiated: 500.0 tokens pending release on EVM
+>>> Withdrawal completed on EVM
+✓ Bridge flow test completed successfully!
 ```
 
 ## Package Overview
@@ -151,7 +144,7 @@ These packages are deployed to Canton Network and **do not** include `daml-scrip
 |---------|-------------|--------|
 | `common` | Shared types (`TokenMeta`, `EvmAddress`, `ChainRef`, `FingerprintAuth`) | Stable |
 | `cip56-token` | CIP-56 compliant token with privacy-preserving transfers | Stable |
-| `bridge-core` | Reusable bridge contracts (`MintProposal`, `RedeemRequest`, `BurnEvent`) | Stable |
+| `bridge-core` | Issuer-centric bridge contracts (`MintCommand`, `WithdrawalRequest`, `WithdrawalEvent`) | Stable |
 | `bridge-wayfinder` | Wayfinder PROMPT token bridge | **Production** |
 | `bridge-usdc` | Circle USDC bridge | Development |
 | `bridge-cbtc` | BitSafe cBTC bridge | Development |
@@ -190,17 +183,17 @@ common                         (no dependencies)
 ```bash
 # CIP-56 Token tests
 cd daml/cip56-token-tests
-daml script --dar .daml/dist/cip56-token-tests-1.0.2.dar \
+daml script --dar .daml/dist/cip56-token-tests-1.1.0.dar \
   --script-name CIP56.Script:test --ide-ledger
 
 # Bridge Core tests
 cd daml/bridge-core-tests
-daml script --dar .daml/dist/bridge-core-tests-1.0.2.dar \
+daml script --dar .daml/dist/bridge-core-tests-1.1.0.dar \
   --script-name Bridge.Script:testBridgeFlow --ide-ledger
 
 # Wayfinder tests
 cd daml/bridge-wayfinder-tests
-daml script --dar .daml/dist/bridge-wayfinder-tests-1.0.2.dar \
+daml script --dar .daml/dist/bridge-wayfinder-tests-1.1.0.dar \
   --script-name Wayfinder.Test:testWayfinderBridge --ide-ledger
 ```
 
@@ -219,8 +212,8 @@ All contracts implement Canton privacy best practices:
 - **Need-to-Know Visibility** - Contracts visible only to relevant parties
 - **No Global Observers** - No admin parties that see all transactions
 - **Privacy-Preserving Compliance** - Whitelist checks without leaking user lists
-- **Dual-Signature Authorization** - Multi-party consent for minting
-- **Locked Asset Pattern** - Prevents double-spending during withdrawals
+- **Issuer-Centric Model** - Issuer controls minting/burning on behalf of users (no user Canton keys required)
+- **Fingerprint-Based Authentication** - EVM addresses map to Canton parties via cryptographic fingerprints
 
 ## Documentation
 
