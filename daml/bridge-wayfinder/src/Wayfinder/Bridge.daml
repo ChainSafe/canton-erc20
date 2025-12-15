@@ -164,25 +164,3 @@ template WayfinderBridgeConfig
         exercise tokenManagerCid Mint with
           to = recipient
           amount = amount
-
-    -- =========================================================================
-    -- LEGACY SUPPORT
-    -- =========================================================================
-    
-    -- | Legacy: Create mint proposal (user-driven flow)
-    -- DEPRECATED: Use ProcessDepositAndMint for issuer-centric flow.
-    nonconsuming choice CreateMintProposal : ContractId MintProposal
-      with
-        recipient : Party
-        amount    : Decimal
-        txHash    : Text
-      controller issuer
-      do
-        create MintProposal with
-          operator = issuer
-          issuer = issuer
-          recipient = recipient
-          tokenManagerCid = tokenManagerCid
-          amount = amount
-          reference = txHash
-          source = ChainRef with chainName = "Ethereum", eventId = txHash

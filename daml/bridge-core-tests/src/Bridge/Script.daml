@@ -5,15 +5,17 @@ import Common.Types
 import CIP56.Token
 import Bridge.Contracts
 
--- Test bridge flow: EVM deposit → Canton mint → Canton burn → EVM release
--- Note: In this simplified flow, the issuer also acts as the bridge operator
--- In production, more sophisticated authorization patterns would be used
+-- Test bridge flow using issuer-centric model:
+-- EVM deposit → Issuer mints → Issuer initiates withdrawal → EVM release
+-- 
+-- In the issuer-centric model:
+-- - ISSUER controls all operations (no user signatures needed)
+-- - Users do NOT manage Canton keys
+-- - Issuer mints/burns on behalf of users
 testBridgeFlow : Script ()
 testBridgeFlow = script do
   -- Allocate parties
-  -- For Phase 0, issuer and operator are the same party for simplicity
-  -- This will be refactored in Phase 1 with proper multi-party authorization
-  issuerOperator <- allocateParty "IssuerOperator"
+  issuer <- allocateParty "Issuer"
   alice <- allocateParty "Alice"
 
   -- Create token manager with extended metadata
@@ -25,64 +27,79 @@ testBridgeFlow = script do
         dtiCode = Some "DTI-USDC"
         regulatoryInfo = Some "SEC Registered"
 
-  tokenManagerCid <- submit issuerOperator $ createCmd CIP56Manager with
-    issuer = issuerOperator
+  tokenManagerCid <- submit issuer $ createCmd CIP56Manager with
+    issuer = issuer
     meta = meta
 
-  -- Simulate EVM deposit event (operator proposes mint)
+  -- ==========================================================================
+  -- DEPOSIT FLOW: EVM → Canton (Issuer-Centric)
+  -- ==========================================================================
+  -- 1. User deposits on EVM with their fingerprint
+  -- 2. Middleware detects event, issuer creates MintCommand
+  -- 3. Issuer executes mint directly (no user acceptance needed)
+  
   let evmTxHash = "0xabc123def456"
-  let source = ChainRef with
-        chainName = "Ethereum"
-        eventId = evmTxHash
+  let fingerprint = "1220abc123def456789"  -- User's Canton fingerprint
 
-  proposalCid <- submit issuerOperator $ createCmd MintProposal with
-    operator = issuerOperator
-    issuer = issuerOperator
+  -- Issuer creates mint command (after resolving fingerprint → alice)
+  mintCmdCid <- submit issuer $ createCmd MintCommand with
+    issuer = issuer
     recipient = alice
     tokenManagerCid = tokenManagerCid
     amount = 1000.0
-    reference = evmTxHash
-    source = source
+    evmTxHash = evmTxHash
+    fingerprint = fingerprint
 
-  -- Alice accepts the proposal
-  authCid <- submit alice $ exerciseCmd proposalCid Accept
-
-  -- Operator (who is also issuer) executes the mint
-  holdingCid <- submit issuerOperator $ exerciseCmd authCid MintOnCanton
+  -- Issuer executes the mint
+  holdingCid <- submit issuer $ exerciseCmd mintCmdCid ExecuteMint
 
   -- Verify Alice received the tokens
   Some holding <- queryContractId alice holdingCid
   assertMsg "Alice owns tokens" (holding.owner == alice)
   assertMsg "Amount is correct" (holding.amount == 1000.0)
 
-  -- WITHDRAWAL FLOW: Lock -> RedeemRequest -> Burn
+  debug ">>> Deposit flow complete: Alice has 1000.0 tokens"
+
+  -- ==========================================================================
+  -- WITHDRAWAL FLOW: Canton → EVM (Issuer-Centric)
+  -- ==========================================================================
+  -- 1. User requests withdrawal off-chain (via API/UI)
+  -- 2. Issuer creates WithdrawalRequest on their behalf
+  -- 3. Issuer processes withdrawal (burns tokens, creates event)
+  -- 4. Middleware processes WithdrawalEvent → releases on EVM
   
-  -- 1. Alice locks funds for Operator
-  (lockedCid, _) <- submit alice do
-    exerciseCmd holdingCid Lock with
-      receiver = issuerOperator
-      value = 1000.0
-      complianceRulesCid = None
-
-  -- 2. Alice requests redemption
-  let evmDest = EvmAddress "0xAliceEthAddress"
-  let redeemRef = "red-001"
+  let evmDestination = EvmAddress "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
   
-  redeemRequestCid <- submit alice do
-    createCmd RedeemRequest with
-      owner = alice
-      operator = issuerOperator
-      issuer = issuerOperator
-      tokenManagerCid = tokenManagerCid
-      lockedAssetCid = lockedCid
-      amount = 1000.0
-      destination = evmDest
-      reference = redeemRef
+  -- Issuer creates withdrawal request on behalf of user
+  withdrawalReqCid <- submit issuer $ createCmd WithdrawalRequest with
+    issuer = issuer
+    userParty = alice
+    tokenManagerCid = tokenManagerCid
+    holdingCid = holdingCid
+    amount = 500.0
+    evmDestination = evmDestination
+    fingerprint = fingerprint
 
-  -- 3. Operator approves burn
-  burnEventCid <- submit issuerOperator do
-    exerciseCmd redeemRequestCid ApproveBurn
+  -- Issuer processes the withdrawal (burns tokens, creates event)
+  withdrawalEventCid <- submit issuer $ exerciseCmd withdrawalReqCid ProcessWithdrawal
 
+  -- Verify WithdrawalEvent was created with Pending status
+  Some withdrawalEvent <- queryContractId alice withdrawalEventCid
+  assertMsg "Withdrawal amount correct" (withdrawalEvent.amount == 500.0)
+  assertMsg "Withdrawal status is Pending" (withdrawalEvent.status == Pending)
+
+  debug ">>> Withdrawal initiated: 500.0 tokens pending release on EVM"
+
+  -- Simulate middleware completing the withdrawal after EVM release
+  completedEventCid <- submit issuer $ exerciseCmd withdrawalEventCid CompleteWithdrawal with
+    evmTxHash = "0xdef789abc123"
+
+  Some completedEvent <- queryContractId alice completedEventCid
+  case completedEvent.status of
+    Completed txHash -> assertMsg "EVM tx hash recorded" (txHash == "0xdef789abc123")
+    _ -> fail "Expected Completed status"
+
+  debug ">>> Withdrawal completed on EVM"
   debug "✓ Bridge flow test completed successfully!"
   pure ()
 
