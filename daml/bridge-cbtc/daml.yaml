@@ -1,4 +1,4 @@
-name: bridge-cbtc
+name: bridge-cbtc-v2
 version: 1.1.0
 sdk-version: 3.4.8
 
@@ -8,6 +8,6 @@ dependencies:
   - daml-stdlib
 
 data-dependencies:
-  - ../common/.daml/dist/common-1.1.0.dar
-  - ../cip56-token/.daml/dist/cip56-token-1.1.0.dar
-  - ../bridge-core/.daml/dist/bridge-core-1.1.0.dar
+  - ../common/.daml/dist/common-v2-1.1.0.dar
+  - ../cip56-token/.daml/dist/cip56-token-v2-1.1.0.dar
+  - ../bridge-core/.daml/dist/bridge-core-v2-1.1.0.dar
