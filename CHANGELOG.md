@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **EVM Bridge (Solidity)** - `ethereum/` directory:
+  - `CantonBridge.sol` - Main bridge contract with deposit/withdraw
+  - `TokenRegistry.sol` - Bridgeable token management
+  - `RateLimiter.sol` - Per-token rate limiting
+  - Foundry test suite
+  - Web UI for testing deposits/withdrawals
+- **E2E Testing Guide** - `docs/E2E-TESTNET-SETUP.md`:
+  - Sepolia testnet deployment instructions
+  - Canton quickstart integration
+  - Middleware configuration
+- **Deployment Scripts**:
+  - `scripts/deploy-canton.sh` - DAR deployment helper
+  - Updated `build-all.sh` with `--solidity` flag
 - Bridge-cBTC package structure (placeholder)
 - Bridge-USDC package structure (placeholder)
 - Bridge-generic package structure (placeholder)
