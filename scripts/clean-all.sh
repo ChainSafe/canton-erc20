@@ -3,23 +3,26 @@
 set -euo pipefail
 
 # =============================================================================
-# Clean All DAML Packages
+# Clean All Packages (DAML + Solidity)
 # =============================================================================
-# This script removes build artifacts from all DAML packages.
+# This script removes build artifacts from all packages.
 #
 # Usage:
-#   ./scripts/clean-all.sh [--deep]
+#   ./scripts/clean-all.sh [--deep] [--solidity]
 #
 # Options:
-#   --deep    Also remove .daml directory (full clean)
+#   --deep      Also remove .daml directory (full clean)
+#   --solidity  Also clean Solidity artifacts (requires Foundry)
 # =============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 DAML_DIR="${REPO_ROOT}/daml"
+ETHEREUM_DIR="${REPO_ROOT}/ethereum"
 
 # Parse arguments
 DEEP_CLEAN=false
+CLEAN_SOLIDITY=false
 
 for arg in "$@"; do
   case $arg in
@@ -27,9 +30,13 @@ for arg in "$@"; do
       DEEP_CLEAN=true
       shift
       ;;
+    --solidity)
+      CLEAN_SOLIDITY=true
+      shift
+      ;;
     *)
       echo "Unknown option: $arg"
-      echo "Usage: $0 [--deep]"
+      echo "Usage: $0 [--deep] [--solidity]"
       exit 1
       ;;
   esac
@@ -132,15 +139,53 @@ if [[ -d ".daml" ]]; then
   fi
 fi
 
+# =============================================================================
+# Clean Solidity Artifacts (if requested)
+# =============================================================================
+
+clean_solidity() {
+  if [[ ! -d "${ETHEREUM_DIR}" ]]; then
+    return 0
+  fi
+
+  log "Cleaning Solidity artifacts..."
+  cd "${ETHEREUM_DIR}"
+
+  # Check for Foundry
+  local FORGE_CMD=""
+  if command -v forge &> /dev/null; then
+    FORGE_CMD="forge"
+  elif [[ -f "$HOME/.foundry/bin/forge" ]]; then
+    FORGE_CMD="$HOME/.foundry/bin/forge"
+  fi
+
+  if [[ -n "${FORGE_CMD}" ]]; then
+    ${FORGE_CMD} clean 2>/dev/null || true
+    success "Solidity artifacts cleaned"
+  else
+    # Manual cleanup if forge not available
+    rm -rf out cache broadcast 2>/dev/null || true
+    success "Solidity artifacts cleaned (manual)"
+  fi
+}
+
+if [[ "${CLEAN_SOLIDITY}" == "true" ]]; then
+  clean_solidity
+fi
+
 echo ""
 success "Clean complete!"
 echo ""
 
 if [[ "${DEEP_CLEAN}" == "true" ]]; then
   echo "All build artifacts and .daml directories removed."
-  echo "Run './scripts/build-all.sh' to rebuild all packages."
 else
   echo "Build artifacts removed."
-  echo "Run './scripts/build-all.sh' to rebuild all packages."
 fi
+
+if [[ "${CLEAN_SOLIDITY}" == "true" ]]; then
+  echo "Solidity artifacts also cleaned."
+fi
+
+echo "Run './scripts/build-all.sh' to rebuild all packages."
 echo ""

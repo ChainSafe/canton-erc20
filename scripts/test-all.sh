@@ -3,27 +3,32 @@
 set -euo pipefail
 
 # =============================================================================
-# Test All DAML Packages
+# Test All Packages (DAML + Solidity)
 # =============================================================================
-# This script runs tests for all DAML packages in the correct dependency order.
+# This script runs tests for all DAML packages and optionally Solidity.
 #
 # Usage:
-#   ./scripts/test-all.sh [--verbose] [--package PACKAGE_NAME]
+#   ./scripts/test-all.sh [--verbose] [--package PACKAGE_NAME] [--solidity] [--daml-only]
 #
 # Options:
 #   --verbose              Show detailed test output
 #   --package PACKAGE_NAME Run tests only for specific package
 #   --coverage             Generate coverage report
+#   --solidity             Also run Solidity tests (requires Foundry)
+#   --daml-only            Only run DAML tests (skip Solidity)
 # =============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 DAML_DIR="${REPO_ROOT}/daml"
+ETHEREUM_DIR="${REPO_ROOT}/ethereum"
 
 # Parse arguments
 VERBOSE=false
 SPECIFIC_PACKAGE=""
 COVERAGE=false
+TEST_SOLIDITY=false
+DAML_ONLY=false
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -39,9 +44,17 @@ while [[ $# -gt 0 ]]; do
       COVERAGE=true
       shift
       ;;
+    --solidity)
+      TEST_SOLIDITY=true
+      shift
+      ;;
+    --daml-only)
+      DAML_ONLY=true
+      shift
+      ;;
     *)
       echo "Unknown option: $1"
-      echo "Usage: $0 [--verbose] [--package PACKAGE_NAME] [--coverage]"
+      echo "Usage: $0 [--verbose] [--package PACKAGE_NAME] [--coverage] [--solidity] [--daml-only]"
       exit 1
       ;;
   esac
@@ -184,16 +197,17 @@ echo "Tests skipped: ${SKIPPED_COUNT}"
 echo "Tests failed: ${#FAILED_PACKAGES[@]}"
 echo ""
 
+DAML_FAILED=false
 if [[ ${#FAILED_PACKAGES[@]} -gt 0 ]]; then
-  error "Failed packages:"
+  error "Failed DAML packages:"
   for pkg in "${FAILED_PACKAGES[@]}"; do
     echo "  - $pkg"
   done
   echo ""
-  exit 1
+  DAML_FAILED=true
 else
   if [[ ${PASSED_COUNT} -eq 0 ]]; then
-    warn "No tests were run. Consider adding test scripts to your packages."
+    warn "No DAML tests were run. Consider adding test scripts to your packages."
     echo ""
     echo "To add tests, create scripts in your DAML files:"
     echo ""
@@ -202,8 +216,67 @@ else
     echo "    -- your test code"
     echo ""
   else
-    success "All tests passed!"
+    success "All DAML tests passed!"
   fi
+fi
+
+# =============================================================================
+# Solidity Tests (if requested)
+# =============================================================================
+
+test_solidity() {
+  if [[ ! -d "${ETHEREUM_DIR}" ]]; then
+    warn "Ethereum directory not found: ${ETHEREUM_DIR}"
+    return 1
+  fi
+
+  log "Running Solidity tests..."
+  cd "${ETHEREUM_DIR}"
+
+  # Check for Foundry
+  local FORGE_CMD=""
+  if command -v forge &> /dev/null; then
+    FORGE_CMD="forge"
+  elif [[ -f "$HOME/.foundry/bin/forge" ]]; then
+    FORGE_CMD="$HOME/.foundry/bin/forge"
+  else
+    error "Foundry not found. Install it with: curl -L https://foundry.paradigm.xyz | bash"
+    return 1
+  fi
+
+  # Run tests
+  local test_args="-vv"
+  if [[ "${VERBOSE}" == "true" ]]; then
+    test_args="-vvvv"
+  fi
+
+  if ${FORGE_CMD} test ${test_args}; then
+    success "Solidity tests passed"
+    return 0
+  else
+    error "Solidity tests failed"
+    return 1
+  fi
+}
+
+SOLIDITY_FAILED=false
+if [[ "${TEST_SOLIDITY}" == "true" && "${DAML_ONLY}" != "true" ]]; then
   echo ""
+  echo "=========================================="
+  echo "Solidity Tests"
+  echo "=========================================="
+  echo ""
+  if ! test_solidity; then
+    SOLIDITY_FAILED=true
+  fi
+fi
+
+# Final summary
+echo ""
+if [[ "${DAML_FAILED}" == "true" || "${SOLIDITY_FAILED}" == "true" ]]; then
+  error "Some tests failed"
+  exit 1
+else
+  success "All tests completed successfully!"
   exit 0
 fi

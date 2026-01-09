@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wayfinder Bridge Test Interface</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #f5f5f5;
+            color: #333;
+        }
+
+        /* New App Container Layout */
+        .app-container {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        .main-content {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            max-width: calc(100vw - 380px);
+        }
+
+        .log-panel {
+            width: 380px;
+            min-width: 350px;
+            background: #1a1a2e;
+            border-left: 1px solid #333;
+            display: flex;
+            flex-direction: column;
+            position: sticky;
+            top: 0;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .log-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            background: #16213e;
+            border-bottom: 1px solid #333;
+        }
+
+        .log-header h3 {
+            margin: 0;
+            color: #ecf0f1;
+            font-size: 14px;
+        }
+
+        .log-header button {
+            padding: 5px 12px;
+            font-size: 11px;
+            background: #e74c3c;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+
+        #activity-log {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            font-family: 'Monaco', 'Consolas', monospace;
+            font-size: 11px;
+            padding: 10px;
+        }
+
+        .log-entry {
+            padding: 8px 10px;
+            margin-bottom: 6px;
+            border-radius: 4px;
+            background: #16213e;
+            border-left: 3px solid #3498db;
+            word-break: break-all;
+        }
+
+        .log-entry.log-api { border-left-color: #3498db; }
+        .log-entry.log-event { border-left-color: #27ae60; }
+        .log-entry.log-error { border-left-color: #e74c3c; background: #2c1a1a; }
+        .log-entry.log-success { border-left-color: #1abc9c; }
+        .log-entry.log-info { border-left-color: #95a5a6; }
+        .log-entry.log-tx { border-left-color: #9b59b6; }
+        .log-entry.log-warn { border-left-color: #f39c12; background: #2c2a1a; }
+
+        .log-time {
+            color: #7f8c8d;
+            font-size: 10px;
+            margin-right: 8px;
+        }
+
+        .log-icon {
+            margin-right: 6px;
+        }
+
+        .log-msg {
+            color: #ecf0f1;
+        }
+
+        .log-details {
+            font-size: 10px;
+            color: #7f8c8d;
+            margin-top: 4px;
+            padding-left: 20px;
+            max-width: 100%;
+            overflow: hidden;
+            white-space: pre-wrap;
+        }
+
+        /* Existing styles */
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 { color: #2c3e50; margin-bottom: 5px; }
+        .subtitle { color: #7f8c8d; margin-bottom: 20px; }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            max-width: 100%;
+        }
+        @media (max-width: 1200px) { .grid { grid-template-columns: 1fr; } }
+
+        /* Prevent any code/monospace from breaking layout */
+        code, .monospace {
+            word-break: break-all;
+            max-width: 100%;
+        }
+
+        .panel {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            overflow: hidden;
+            min-width: 0; /* Allow flex children to shrink below content size */
+        }
+        .panel h2 {
+            margin-top: 0;
+            color: #34495e;
+            font-size: 18px;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+
+        .form-group { margin-bottom: 15px; }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #555;
+        }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            font-family: 'Monaco', 'Consolas', monospace;
+        }
+        .form-group input:focus {
+            border-color: #3498db;
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(52,152,219,0.2);
+        }
+        .form-group small { color: #7f8c8d; font-size: 12px; }
+
+        .btn-group { display: flex; gap: 10px; flex-wrap: wrap; }
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-primary { background: #3498db; color: white; }
+        .btn-primary:hover:not(:disabled) { background: #2980b9; }
+        .btn-success { background: #27ae60; color: white; }
+        .btn-success:hover:not(:disabled) { background: #219a52; }
+        .btn-warning { background: #f39c12; color: white; }
+        .btn-warning:hover:not(:disabled) { background: #d68910; }
+        .btn-danger { background: #e74c3c; color: white; }
+        .btn-danger:hover:not(:disabled) { background: #c0392b; }
+
+        .status-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 20px;
+            background: white;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border: 1px solid #ddd;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .status-item { display: flex; align-items: center; gap: 8px; }
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+        .status-dot.connected { background: #27ae60; }
+        .status-dot.disconnected { background: #e74c3c; }
+        .status-dot.pending { background: #f39c12; }
+
+        .state-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #eee;
+        }
+        .state-item:last-child { border-bottom: none; }
+        .state-label { color: #7f8c8d; }
+        .state-value { font-family: 'Monaco', 'Consolas', monospace; font-weight: 500; }
+
+        .token-list { margin-top: 15px; }
+        .token-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            margin-bottom: 8px;
+        }
+        .token-symbol { font-weight: 600; }
+        .token-address { font-family: monospace; font-size: 12px; color: #7f8c8d; }
+
+        .tx-pending {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            overflow: hidden;
+        }
+        .tx-success {
+            background: #d4edda;
+            border: 1px solid #28a745;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            overflow: hidden;
+        }
+        .tx-error {
+            background: #f8d7da;
+            border: 1px solid #dc3545;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            overflow: hidden;
+        }
+
+        /* Long hash/ID display with truncation and copy */
+        .hash-display {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            max-width: 100%;
+        }
+        .hash-display code {
+            font-size: 11px;
+            background: rgba(0,0,0,0.05);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Monaco', 'Consolas', monospace;
+            word-break: break-all;
+            max-width: calc(100% - 60px);
+            display: inline-block;
+        }
+        .copy-btn {
+            padding: 2px 8px;
+            font-size: 10px;
+            background: #6c757d;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .copy-btn:hover { background: #5a6268; }
+        .copy-btn.copied { background: #28a745; }
+
+        .empty-state {
+            text-align: center;
+            color: #95a5a6;
+            padding: 40px;
+        }
+
+        .full-width { grid-column: 1 / -1; }
+
+        .queued-withdrawal {
+            background: #fff8e1;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            border-left: 4px solid #ffc107;
+        }
+        .queued-withdrawal .label { font-size: 12px; color: #7f8c8d; }
+        .queued-withdrawal .value { font-family: monospace; }
+
+        .stuck-transfer {
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 12px 15px;
+            margin-bottom: 10px;
+        }
+        .stuck-transfer.failed { border-left: 4px solid #e74c3c; background: #fff5f5; }
+        .stuck-transfer.pending { border-left: 4px solid #f39c12; background: #fffbf0; }
+        .stuck-transfer-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .stuck-transfer-id { font-family: monospace; font-size: 13px; font-weight: 600; }
+        .stuck-transfer-status {
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+        .stuck-transfer-status.failed { background: #e74c3c; color: white; }
+        .stuck-transfer-status.pending { background: #f39c12; color: white; }
+        .stuck-transfer-details {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 8px;
+        }
+        .stuck-transfer-details span { margin-right: 15px; }
+        .stuck-transfer-actions button {
+            padding: 4px 10px;
+            font-size: 11px;
+            margin-right: 5px;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 1400px) {
+            .log-panel { width: 320px; min-width: 280px; }
+            .main-content { max-width: calc(100vw - 320px); }
+        }
+        @media (max-width: 1000px) {
+            .app-container { flex-direction: column; }
+            .main-content { max-width: 100%; }
+            .log-panel {
+                width: 100%;
+                height: 300px;
+                position: relative;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <div class="main-content">
+            <div class="container">
+                <h1>Wayfinder Bridge Test Interface</h1>
+                <p class="subtitle">Canton-Ethereum Bridge Testing Tool for Sepolia Testnet</p>
+
+                <!-- Step-by-Step Guide -->
+                <div style="background: #e3f2fd; border: 1px solid #2196f3; padding: 15px 20px; border-radius: 8px; margin-bottom: 15px;">
+                    <strong style="color: #1565c0;">How to Bridge Tokens (EVM to Canton)</strong>
+                    <ol style="margin: 10px 0 0 0; padding-left: 20px; color: #37474f;">
+                        <li><strong>Connect Wallet</strong> - Click Connect and switch to Sepolia network</li>
+                        <li><strong>Register on Canton</strong> - Click "Register Wallet" to create your Canton account (one-time)</li>
+                        <li><strong>Check Your Fingerprint</strong> - Your fingerprint will auto-populate in the deposit form</li>
+                        <li><strong>Approve Tokens</strong> - Click "Approve" to allow the bridge to transfer your tokens</li>
+                        <li><strong>Deposit</strong> - Click "Deposit" to send tokens to Canton</li>
+                    </ol>
+                    <p style="margin: 10px 0 0 0; font-size: 12px; color: #666;">
+                        <strong>Important:</strong> You must register BEFORE depositing. Your fingerprint (keccak256 of your address) links your EVM and Canton accounts.
+                    </p>
+                </div>
+
+                <!-- Status Bar -->
+                <div class="status-bar">
+                    <div class="status-item">
+                        <span class="status-dot disconnected" id="wallet-dot"></span>
+                        <span id="wallet-status">Not Connected</span>
+                    </div>
+                    <div class="status-item">
+                        <span>Network:</span>
+                        <strong id="network-name">-</strong>
+                    </div>
+                    <div class="status-item">
+                        <span>Bridge:</span>
+                        <code id="bridge-addr-display">-</code>
+                    </div>
+                    <button class="btn-primary" id="connect-wallet">Connect Wallet</button>
+                </div>
+
+                <div class="grid">
+                    <!-- Configuration Panel -->
+                    <div class="panel">
+                        <h2>Configuration</h2>
+                        <div class="form-group">
+                            <label>RPC URL</label>
+                            <input type="text" id="rpc-url" value="https://eth-sepolia.g.alchemy.com/v2/MeMdx3uk0ZFuSy2YFs0VAGjG7gXf0wJP">
+                        </div>
+                        <div class="form-group">
+                            <label>Bridge Contract Address</label>
+                            <input type="text" id="bridge-address" value="0x523a865Bf51d93df22Fb643e6BDE2F66438e32c2">
+                        </div>
+                        <div class="form-group">
+                            <label>Chain ID</label>
+                            <input type="number" id="chain-id" value="11155111">
+                            <small>Sepolia = 11155111</small>
+                        </div>
+                        <button class="btn-primary" id="apply-config">Apply Configuration</button>
+                    </div>
+
+                    <!-- Deposit Panel -->
+                    <div class="panel">
+                        <h2>Deposit to Canton (EVM to Canton)</h2>
+
+                        <!-- Token Balance Display -->
+                        <div id="token-balance-display" style="background: #f8f9fa; padding: 12px; border-radius: 4px; margin-bottom: 15px; display: none;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span><strong>Your ERC20 Balance:</strong></span>
+                                <span id="erc20-balance" style="font-family: monospace; font-size: 16px; color: #27ae60;">-</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 5px;">
+                                <span><strong>Allowance to Bridge:</strong></span>
+                                <span id="erc20-allowance" style="font-family: monospace; font-size: 14px; color: #7f8c8d;">-</span>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Token Address</label>
+                            <input type="text" id="token-address" value="0x92195F2913fc0A04bdD5Fc04f7bd340B3ae477Bf" placeholder="0x...">
+                            <small>MockPROMPT from E2E test</small>
+                            <button class="btn-primary" id="refresh-balance-btn" style="margin-top: 8px; padding: 6px 12px; font-size: 12px;">Refresh Balance</button>
+                        </div>
+                        <div class="form-group">
+                            <label>Amount (in token units, e.g., 100)</label>
+                            <input type="text" id="deposit-amount" value="100">
+                        </div>
+                        <div class="form-group">
+                            <label>Canton Recipient (your fingerprint)</label>
+                            <input type="text" id="canton-recipient" placeholder="Register wallet first to get your fingerprint" readonly style="background: #f5f5f5;">
+                            <small id="fingerprint-help" style="color: #e74c3c;">Register your wallet first to auto-populate your fingerprint</small>
+                        </div>
+                        <div class="btn-group">
+                            <button class="btn-warning" id="approve-btn">1. Approve</button>
+                            <button class="btn-success" id="deposit-btn" disabled>2. Deposit</button>
+                        </div>
+                    </div>
+
+                    <!-- User Registration & Canton Balance Panel -->
+                    <div class="panel">
+                        <h2>Canton Account</h2>
+                        <p style="color: #7f8c8d; font-size: 13px; margin-bottom: 15px;">
+                            Register your wallet with Canton to receive deposits and initiate withdrawals.
+                        </p>
+                        <div class="form-group">
+                            <label>API Server URL</label>
+                            <input type="text" id="api-url" value="http://localhost:8081/rpc" placeholder="http://localhost:8081/rpc">
+                        </div>
+                        <div class="btn-group" style="margin-bottom: 15px;">
+                            <button class="btn-primary" id="register-btn">Register Wallet</button>
+                            <button class="btn-warning" id="check-balance-btn">Check Balance</button>
+                        </div>
+                        <div id="canton-account-status"></div>
+
+                        <hr style="margin: 20px 0; border: none; border-top: 1px solid #eee;">
+
+                        <h3 style="font-size: 14px;">Withdraw to EVM</h3>
+                        <div class="form-group">
+                            <label>Withdrawal Amount (e.g., 100.0)</label>
+                            <input type="text" id="withdraw-amount" placeholder="100.0">
+                        </div>
+                        <div class="form-group">
+                            <label>EVM Destination (optional, defaults to your wallet)</label>
+                            <input type="text" id="withdraw-destination" placeholder="0x... (leave empty for your wallet)">
+                        </div>
+                        <div class="btn-group">
+                            <button class="btn-success" id="initiate-withdraw-btn">Initiate Withdrawal</button>
+                        </div>
+                        <div id="withdraw-status" style="margin-top: 15px;"></div>
+
+                        <hr style="margin: 20px 0; border: none; border-top: 1px solid #eee;">
+
+                        <h3 style="font-size: 14px;">Execute Large Withdrawal (after timelock)</h3>
+                        <div class="form-group">
+                            <label>Withdrawal ID (bytes32)</label>
+                            <input type="text" id="withdrawal-id" placeholder="0x...">
+                        </div>
+                        <div class="btn-group">
+                            <button class="btn-success" id="execute-withdrawal-btn">Execute Withdrawal</button>
+                            <button class="btn-danger" id="cancel-withdrawal-btn">Cancel (Admin)</button>
+                        </div>
+
+                        <h3 style="margin-top: 20px; font-size: 14px;">Queued Withdrawals</h3>
+                        <div id="queued-withdrawals-list">
+                            <div class="empty-state">No queued withdrawals found</div>
+                        </div>
+                    </div>
+
+                    <!-- Bridge State Panel -->
+                    <div class="panel">
+                        <h2>Bridge State</h2>
+                        <div class="form-group">
+                            <label>Query Token Address</label>
+                            <input type="text" id="query-token" value="0x92195F2913fc0A04bdD5Fc04f7bd340B3ae477Bf" placeholder="0x...">
+                            <button class="btn-primary" id="query-state-btn" style="margin-top: 10px;">Query State</button>
+                        </div>
+
+                        <div id="bridge-state">
+                            <div class="state-item">
+                                <span class="state-label">Token Registered:</span>
+                                <span class="state-value" id="state-registered">-</span>
+                            </div>
+                            <div class="state-item">
+                                <span class="state-label">Locked Balance:</span>
+                                <span class="state-value" id="state-locked">-</span>
+                            </div>
+                            <div class="state-item">
+                                <span class="state-label">Rate Limit Max:</span>
+                                <span class="state-value" id="state-rate-max">-</span>
+                            </div>
+                            <div class="state-item">
+                                <span class="state-label">Rate Limit Used:</span>
+                                <span class="state-value" id="state-rate-used">-</span>
+                            </div>
+                            <div class="state-item">
+                                <span class="state-label">Rate Limit Remaining:</span>
+                                <span class="state-value" id="state-rate-remaining">-</span>
+                            </div>
+                            <div class="state-item">
+                                <span class="state-label">Time Lock Delay:</span>
+                                <span class="state-value" id="state-timelock">-</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Stuck Transfers Panel -->
+                    <div class="panel full-width">
+                        <h2 style="border-bottom-color: #f39c12;">
+                            Stuck Transfers
+                            <button class="btn-primary" id="refresh-stuck-btn" style="float: right; padding: 4px 12px; font-size: 11px;">Refresh</button>
+                        </h2>
+                        <div class="form-group" style="margin-bottom: 10px;">
+                            <label style="font-size: 12px; color: #7f8c8d;">Relayer API URL</label>
+                            <input type="text" id="relayer-url" value="http://localhost:8180/api/v1" style="font-size: 12px; padding: 6px 8px;">
+                        </div>
+                        <div id="stuck-transfers">
+                            <div class="empty-state" style="padding: 20px;">Click Refresh to load stuck transfers</div>
+                        </div>
+                    </div>
+
+                    <!-- Transaction Status -->
+                    <div class="panel full-width">
+                        <h2>Transaction Status</h2>
+                        <div id="tx-status">
+                            <div class="empty-state">No pending transactions</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Activity Log Panel (Right Side) -->
+        <div class="log-panel">
+            <div class="log-header">
+                <h3>Activity Log</h3>
+                <button onclick="window.bridgeInterface && window.bridgeInterface.logger.clear()">Clear</button>
+            </div>
+            <div id="activity-log">
+                <div class="log-entry log-info">
+                    <span class="log-time">--:--:--</span>
+                    <span class="log-icon">i</span>
+                    <span class="log-msg">Waiting for activity...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Load ethers.js locally (downloaded from CDN) -->
+    <script src="ethers.min.js"></script>
+    <script src="bridge.js"></script>
+</body>
+</html>
