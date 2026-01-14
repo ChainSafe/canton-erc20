@@ -54,29 +54,3 @@ template BridgeBurnEvent
   where
     signatory issuer
     observer burnedFrom, auditObservers
-
--- =============================================================================
--- TRANSFER EVENT (Canton internal transfer)
--- =============================================================================
-
--- | Audit event for bridge transfer operations
---
--- Created when tokens are transferred between parties on Canton.
--- Both sender and recipient fingerprints included for audit.
-template BridgeTransferEvent
-  with
-    issuer : Party
-    sender : Party
-    recipient : Party
-    amount : Decimal
-    senderRemainderCid : Optional (ContractId CIP56Holding)
-    recipientHoldingCid : ContractId CIP56Holding
-    tokenSymbol : Text
-    senderFingerprint : Text     -- Sender's EVM-derived fingerprint
-    recipientFingerprint : Text  -- Recipient's EVM-derived fingerprint
-    timestamp : Time
-    auditObservers : [Party]
-  where
-    signatory issuer
-    observer sender, recipient, auditObservers
-
