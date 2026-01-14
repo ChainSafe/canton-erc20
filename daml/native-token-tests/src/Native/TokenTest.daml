@@ -1,0 +1,319 @@
+module Native.TokenTest where
+
+import Daml.Script
+import DA.Time (time)
+import DA.Date (date, Month(..))
+
+import CIP56.Token
+import Common.Types
+import Native.Token
+import Native.Events
+
+-- | Test basic mint functionality
+testIssuerMint : Script ()
+testIssuerMint = do
+  -- Setup parties
+  issuer <- allocateParty "Issuer"
+  recipient <- allocateParty "Recipient"
+  auditor <- allocateParty "Auditor"
+  
+  -- Create token metadata
+  let meta = ExtendedMetadata with
+        name = "Test Token"
+        symbol = "TEST"
+        decimals = 18
+        isin = None
+        dtiCode = None
+        regulatoryInfo = None
+  
+  -- Create CIP56Manager
+  managerCid <- submit issuer do
+    createCmd CIP56Manager with
+      issuer = issuer
+      meta = meta
+  
+  -- Create NativeTokenConfig
+  configCid <- submit issuer do
+    createCmd NativeTokenConfig with
+      issuer = issuer
+      tokenManagerCid = managerCid
+      meta = meta
+      auditObservers = [auditor]
+  
+  -- Mint tokens with user fingerprint
+  let eventTime = time (date 2024 Jan 15) 12 0 0
+  let testFingerprint = "0xabc123def456"
+  (holdingCid, mintEventCid) <- submit issuer do
+    exerciseCmd configCid IssuerMint with
+      recipient = recipient
+      amount = 1000.0
+      eventTime = eventTime
+      userFingerprint = testFingerprint
+  
+  -- Verify holding was created
+  holding <- queryContractId recipient holdingCid
+  case holding of
+    None -> fail "Holding not found"
+    Some h -> do
+      assertMsg "Holding amount should be 1000" (h.amount == 1000.0)
+      assertMsg "Holding owner should be recipient" (h.owner == recipient)
+  
+  -- Verify mint event was created with fingerprint
+  mintEvent <- queryContractId issuer mintEventCid
+  case mintEvent of
+    None -> fail "MintEvent not found"
+    Some e -> do
+      assertMsg "Event amount should be 1000" (e.amount == 1000.0)
+      assertMsg "Event recipient should match" (e.recipient == recipient)
+      assertMsg "Event symbol should match" (e.tokenSymbol == "TEST")
+      assertMsg "Event fingerprint should match" (e.userFingerprint == testFingerprint)
+  
+  pure ()
+
+-- | Test burn functionality
+testIssuerBurn : Script ()
+testIssuerBurn = do
+  -- Setup parties
+  issuer <- allocateParty "Issuer"
+  holder <- allocateParty "Holder"
+  auditor <- allocateParty "Auditor"
+  
+  let meta = ExtendedMetadata with
+        name = "Test Token"
+        symbol = "TEST"
+        decimals = 18
+        isin = None
+        dtiCode = None
+        regulatoryInfo = None
+  
+  -- Create CIP56Manager and NativeTokenConfig
+  managerCid <- submit issuer do
+    createCmd CIP56Manager with
+      issuer = issuer
+      meta = meta
+  
+  configCid <- submit issuer do
+    createCmd NativeTokenConfig with
+      issuer = issuer
+      tokenManagerCid = managerCid
+      meta = meta
+      auditObservers = [auditor]
+  
+  -- Mint tokens first
+  let mintTime = time (date 2024 Jan 15) 12 0 0
+  let holderFingerprint = "0xholder789"
+  (holdingCid, _) <- submit issuer do
+    exerciseCmd configCid IssuerMint with
+      recipient = holder
+      amount = 1000.0
+      eventTime = mintTime
+      userFingerprint = holderFingerprint
+  
+  -- Burn partial amount
+  let burnTime = time (date 2024 Jan 15) 13 0 0
+  (remainderCid, burnEventCid) <- submit issuer do
+    exerciseCmd configCid IssuerBurn with
+      holdingCid = holdingCid
+      amount = 400.0
+      eventTime = burnTime
+      userFingerprint = holderFingerprint
+  
+  -- Verify remainder holding
+  case remainderCid of
+    None -> fail "Remainder holding should exist"
+    Some cid -> do
+      holding <- queryContractId holder cid
+      case holding of
+        None -> fail "Remainder holding not found"
+        Some h -> assertMsg "Remainder should be 600" (h.amount == 600.0)
+  
+  -- Verify burn event with fingerprint
+  burnEvent <- queryContractId issuer burnEventCid
+  case burnEvent of
+    None -> fail "BurnEvent not found"
+    Some e -> do
+      assertMsg "Burn amount should be 400" (e.amount == 400.0)
+      assertMsg "Burned from should be holder" (e.burnedFrom == holder)
+      assertMsg "Burn fingerprint should match" (e.userFingerprint == holderFingerprint)
+  
+  pure ()
+
+-- | Test transfer functionality
+testIssuerTransfer : Script ()
+testIssuerTransfer = do
+  -- Setup parties
+  issuer <- allocateParty "Issuer"
+  sender <- allocateParty "Sender"
+  recipient <- allocateParty "Recipient"
+  auditor <- allocateParty "Auditor"
+  
+  let meta = ExtendedMetadata with
+        name = "Test Token"
+        symbol = "TEST"
+        decimals = 18
+        isin = None
+        dtiCode = None
+        regulatoryInfo = None
+  
+  -- Create CIP56Manager and NativeTokenConfig
+  managerCid <- submit issuer do
+    createCmd CIP56Manager with
+      issuer = issuer
+      meta = meta
+  
+  configCid <- submit issuer do
+    createCmd NativeTokenConfig with
+      issuer = issuer
+      tokenManagerCid = managerCid
+      meta = meta
+      auditObservers = [auditor]
+  
+  -- Mint tokens to sender first
+  let mintTime = time (date 2024 Jan 15) 12 0 0
+  let senderFp = "0xsender111"
+  (senderHoldingCid, _) <- submit issuer do
+    exerciseCmd configCid IssuerMint with
+      recipient = sender
+      amount = 1000.0
+      eventTime = mintTime
+      userFingerprint = senderFp
+  
+  -- Transfer tokens from sender to recipient
+  let transferTime = time (date 2024 Jan 15) 14 0 0
+  let recipientFp = "0xrecipient222"
+  (senderRemainderCid, recipientHoldingCid, transferEventCid) <- submit issuer do
+    exerciseCmd configCid IssuerTransfer with
+      senderHoldingCid = senderHoldingCid
+      recipient = recipient
+      amount = 300.0
+      eventTime = transferTime
+      senderFingerprint = senderFp
+      recipientFingerprint = recipientFp
+  
+  -- Verify sender's remainder
+  case senderRemainderCid of
+    None -> fail "Sender remainder should exist"
+    Some cid -> do
+      holding <- queryContractId sender cid
+      case holding of
+        None -> fail "Sender remainder not found"
+        Some h -> assertMsg "Sender should have 700 left" (h.amount == 700.0)
+  
+  -- Verify recipient's holding
+  recipientHolding <- queryContractId recipient recipientHoldingCid
+  case recipientHolding of
+    None -> fail "Recipient holding not found"
+    Some h -> do
+      assertMsg "Recipient should have 300" (h.amount == 300.0)
+      assertMsg "Recipient owner should match" (h.owner == recipient)
+  
+  -- Verify transfer event with fingerprints
+  transferEvent <- queryContractId issuer transferEventCid
+  case transferEvent of
+    None -> fail "TransferEvent not found"
+    Some e -> do
+      assertMsg "Transfer amount should be 300" (e.amount == 300.0)
+      assertMsg "Sender should match" (e.sender == sender)
+      assertMsg "Recipient should match" (e.recipient == recipient)
+      assertMsg "Sender fingerprint should match" (e.senderFingerprint == senderFp)
+      assertMsg "Recipient fingerprint should match" (e.recipientFingerprint == recipientFp)
+  
+  pure ()
+
+-- | Test full mint to exact amount burn scenario
+testFullBurn : Script ()
+testFullBurn = do
+  issuer <- allocateParty "Issuer"
+  holder <- allocateParty "Holder"
+  
+  let meta = ExtendedMetadata with
+        name = "Test Token"
+        symbol = "TEST"
+        decimals = 18
+        isin = None
+        dtiCode = None
+        regulatoryInfo = None
+  
+  managerCid <- submit issuer do
+    createCmd CIP56Manager with
+      issuer = issuer
+      meta = meta
+  
+  configCid <- submit issuer do
+    createCmd NativeTokenConfig with
+      issuer = issuer
+      tokenManagerCid = managerCid
+      meta = meta
+      auditObservers = []
+  
+  let mintTime = time (date 2024 Jan 15) 12 0 0
+  let holderFp = "0xfullburn333"
+  (holdingCid, _) <- submit issuer do
+    exerciseCmd configCid IssuerMint with
+      recipient = holder
+      amount = 500.0
+      eventTime = mintTime
+      userFingerprint = holderFp
+  
+  -- Burn exact amount
+  let burnTime = time (date 2024 Jan 15) 13 0 0
+  (remainderCid, _) <- submit issuer do
+    exerciseCmd configCid IssuerBurn with
+      holdingCid = holdingCid
+      amount = 500.0
+      eventTime = burnTime
+      userFingerprint = holderFp
+  
+  -- Verify no remainder (full burn)
+  case remainderCid of
+    None -> pure ()  -- Expected: no remainder for full burn
+    Some _ -> fail "Full burn should not have remainder"
+  
+  pure ()
+
+-- | Test adding and removing audit observers
+testAuditObservers : Script ()
+testAuditObservers = do
+  issuer <- allocateParty "Issuer"
+  auditor1 <- allocateParty "Auditor1"
+  auditor2 <- allocateParty "Auditor2"
+  
+  let meta = ExtendedMetadata with
+        name = "Test Token"
+        symbol = "TEST"
+        decimals = 18
+        isin = None
+        dtiCode = None
+        regulatoryInfo = None
+  
+  managerCid <- submit issuer do
+    createCmd CIP56Manager with
+      issuer = issuer
+      meta = meta
+  
+  configCid <- submit issuer do
+    createCmd NativeTokenConfig with
+      issuer = issuer
+      tokenManagerCid = managerCid
+      meta = meta
+      auditObservers = [auditor1]
+  
+  -- Add another auditor
+  configCid2 <- submit issuer do
+    exerciseCmd configCid AddAuditObserver with
+      newObserver = auditor2
+  
+  -- Remove first auditor
+  configCid3 <- submit issuer do
+    exerciseCmd configCid2 RemoveAuditObserver with
+      observerToRemove = auditor1
+  
+  -- Verify final state
+  config <- queryContractId issuer configCid3
+  case config of
+    None -> fail "Config not found"
+    Some c -> do
+      assertMsg "Should have auditor2" (auditor2 `elem` c.auditObservers)
+      assertMsg "Should not have auditor1" (not (auditor1 `elem` c.auditObservers))
+  
+  pure ()

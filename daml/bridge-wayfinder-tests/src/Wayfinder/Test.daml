@@ -13,20 +13,21 @@ import DA.Date (date, Month(..))
 import Common.Types
 import CIP56.Token
 import Bridge.Contracts
+import Bridge.Events
 import Wayfinder.Bridge
 
 -- =============================================================================
 -- ISSUER-CENTRIC FULL FLOW TEST
 -- =============================================================================
 
--- | Complete end-to-end test of issuer-centric bridge
+-- | Complete end-to-end test of issuer-centric bridge with audit events
 --
 -- Flow:
 -- 1. Issuer deploys bridge
 -- 2. Issuer allocates parties for users (simulated)
 -- 3. Issuer registers fingerprint mappings
--- 4. User deposits on EVM → Issuer processes and mints
--- 5. Issuer initiates withdrawal → Creates event for EVM
+-- 4. User deposits on EVM → Issuer processes and mints (with audit event)
+-- 5. Issuer initiates withdrawal → Creates events for EVM
 testIssuerCentricBridge : Script ()
 testIssuerCentricBridge = script do
   -- ===========================================================================
@@ -36,6 +37,7 @@ testIssuerCentricBridge = script do
   
   -- Issuer is the participant node operator
   issuer <- allocateParty "BridgeIssuer"
+  auditor <- allocateParty "Auditor"
   
   -- Issuer allocates parties for users
   -- In reality: issuer.partyManagement.allocateParty("Alice") → "Alice::1220abc..."
@@ -48,11 +50,12 @@ testIssuerCentricBridge = script do
       issuer = issuer
       meta = promptMetadata
   
-  -- Deploy bridge config
+  -- Deploy bridge config with audit observer
   configCid <- submit issuer do
     createCmd WayfinderBridgeConfig with
       issuer = issuer
       tokenManagerCid = tokenManagerCid
+      auditObservers = [auditor]
   
   debug "    [OK] Bridge deployed."
   
@@ -82,7 +85,7 @@ testIssuerCentricBridge = script do
   debug "    [OK] Users registered with fingerprints."
   
   -- ===========================================================================
-  -- 3. DEPOSIT FLOW (EVM → Canton)
+  -- 3. DEPOSIT FLOW (EVM → Canton) WITH AUDIT EVENT
   -- ===========================================================================
   debug ">>> 3. Alice deposits 100.0 PROMPT from Ethereum..."
   
@@ -98,40 +101,56 @@ testIssuerCentricBridge = script do
       evmTxHash = "0xAliceDepositTx..."
       timestamp = testTime
   
-  -- Issuer processes deposit and mints tokens
-  aliceHoldingCid <- submit issuer do
+  -- Issuer processes deposit and mints tokens (now returns audit event)
+  (aliceHoldingCid, mintEventCid) <- submit issuer do
     exerciseCmd configCid ProcessDepositAndMint with
       depositCid = aliceDepositCid
       mappingCid = aliceMappingCid
+      timestamp = testTime
   
   -- Verify Alice received tokens
   Some aliceHolding <- queryContractId alice aliceHoldingCid
   assertMsg "Alice should have 100.0 PROMPT" (aliceHolding.amount == 100.0)
   
-  debug "    [OK] Alice received 100.0 PROMPT."
+  -- Verify mint audit event was created
+  Some mintEvent <- queryContractId issuer mintEventCid
+  assertMsg "Mint event amount correct" (mintEvent.amount == 100.0)
+  assertMsg "Mint event recipient correct" (mintEvent.recipient == alice)
+  assertMsg "Mint event fingerprint correct" (mintEvent.fingerprint == aliceFingerprint)
+  assertMsg "Mint event tokenSymbol correct" (mintEvent.tokenSymbol == "PROMPT")
+  
+  -- Verify auditor can see the event
+  Some mintEventFromAuditor <- queryContractId auditor mintEventCid
+  assertMsg "Auditor can see mint event" (mintEventFromAuditor.amount == 100.0)
+  
+  debug "    [OK] Alice received 100.0 PROMPT with audit event."
   
   -- ===========================================================================
-  -- 4. NATIVE TRANSFER (Canton)
+  -- 4. DIRECT MINT WITH AUDIT EVENT
   -- ===========================================================================
-  debug ">>> 4. Alice transfers 40.0 PROMPT to Bob..."
+  debug ">>> 4. Direct mint 40.0 PROMPT to Bob..."
   
-  -- Note: In issuer-centric model, issuer would facilitate this transfer
-  -- For simplicity, we show direct transfer (requires issuer to be signatory)
-  -- In production, issuer would create transfer commands
+  let bobMintTime = time (date 2025 Jan 1) 14 0 0
   
-  -- For now, let's use the direct mint to give Bob tokens
-  bobHoldingCid <- submit issuer do
+  (bobHoldingCid, bobMintEventCid) <- submit issuer do
     exerciseCmd configCid DirectMint with
       recipient = bob
       amount = 40.0
+      evmTxHash = "admin-mint"
+      fingerprint = bobFingerprint
+      timestamp = bobMintTime
   
   Some bobHolding <- queryContractId bob bobHoldingCid
   assertMsg "Bob should have 40.0 PROMPT" (bobHolding.amount == 40.0)
   
-  debug "    [OK] Bob has 40.0 PROMPT."
+  -- Verify Bob's mint event
+  Some bobMintEvent <- queryContractId issuer bobMintEventCid
+  assertMsg "Bob mint event amount correct" (bobMintEvent.amount == 40.0)
+  
+  debug "    [OK] Bob has 40.0 PROMPT with audit event."
   
   -- ===========================================================================
-  -- 5. WITHDRAWAL FLOW (Canton → EVM)
+  -- 5. WITHDRAWAL FLOW (Canton → EVM) WITH AUDIT EVENT
   -- ===========================================================================
   debug ">>> 5. Bob requests withdrawal of 40.0 PROMPT to Ethereum..."
   
@@ -144,15 +163,28 @@ testIssuerCentricBridge = script do
       evmDestination = EvmAddress "0xBobEthWallet..."
   
   -- Issuer processes the withdrawal
-  withdrawalEventCid <- submit issuer do
-    exerciseCmd withdrawalRequestCid ProcessWithdrawal
+  let withdrawalTime = time (date 2025 Jan 1) 16 0 0
+  (withdrawalEventCid, burnEventCid) <- submit issuer do
+    exerciseCmd withdrawalRequestCid ProcessWithdrawal with
+      timestamp = withdrawalTime
   
   -- Verify withdrawal event
   Some withdrawalEvent <- queryContractId issuer withdrawalEventCid
   assertMsg "Withdrawal amount correct" (withdrawalEvent.amount == 40.0)
   assertMsg "Withdrawal fingerprint preserved" (withdrawalEvent.fingerprint == bobFingerprint)
+  assertMsg "Withdrawal tokenSymbol correct" (withdrawalEvent.tokenSymbol == "PROMPT")
   
-  debug "    [OK] Withdrawal event created for middleware."
+  -- Verify burn audit event
+  Some burnEvent <- queryContractId issuer burnEventCid
+  assertMsg "Burn event amount correct" (burnEvent.amount == 40.0)
+  assertMsg "Burn event burnedFrom correct" (burnEvent.burnedFrom == bob)
+  assertMsg "Burn event fingerprint correct" (burnEvent.fingerprint == bobFingerprint)
+  
+  -- Verify auditor can see burn event
+  Some burnEventFromAuditor <- queryContractId auditor burnEventCid
+  assertMsg "Auditor can see burn event" (burnEventFromAuditor.amount == 40.0)
+  
+  debug "    [OK] Withdrawal event created with burn audit event."
   
   -- ===========================================================================
   -- 6. COMPLETE WITHDRAWAL (After EVM Release)
@@ -169,8 +201,129 @@ testIssuerCentricBridge = script do
     _ -> fail "Expected Completed status"
   
   debug "    [OK] Withdrawal marked complete."
-  debug ">>> Issuer-Centric Bridge Test Complete!"
+  debug ">>> Issuer-Centric Bridge Test with Audit Events Complete!"
   
+  pure ()
+
+-- =============================================================================
+-- TEST: AUDIT OBSERVER MANAGEMENT
+-- =============================================================================
+
+testAuditObserverManagement : Script ()
+testAuditObserverManagement = script do
+  debug ">>> Testing audit observer management..."
+  
+  issuer <- allocateParty "BridgeIssuer"
+  auditor1 <- allocateParty "Auditor1"
+  auditor2 <- allocateParty "Auditor2"
+  
+  tokenManagerCid <- submit issuer do
+    createCmd CIP56Manager with
+      issuer = issuer
+      meta = promptMetadata
+  
+  -- Start with auditor1
+  configCid <- submit issuer do
+    createCmd WayfinderBridgeConfig with
+      issuer = issuer
+      tokenManagerCid = tokenManagerCid
+      auditObservers = [auditor1]
+  
+  -- Add auditor2
+  configCid2 <- submit issuer do
+    exerciseCmd configCid AddAuditObserver with
+      newObserver = auditor2
+  
+  -- Verify both auditors are now observers
+  Some config <- queryContractId issuer configCid2
+  assertMsg "Both auditors should be observers" 
+    (auditor1 `elem` config.auditObservers && auditor2 `elem` config.auditObservers)
+  
+  -- Remove auditor1
+  configCid3 <- submit issuer do
+    exerciseCmd configCid2 RemoveAuditObserver with
+      observerToRemove = auditor1
+  
+  -- Verify only auditor2 remains
+  Some finalConfig <- queryContractId issuer configCid3
+  assertMsg "Only auditor2 should remain" 
+    (auditor2 `elem` finalConfig.auditObservers && not (auditor1 `elem` finalConfig.auditObservers))
+  
+  debug "    [OK] Audit observer management works correctly."
+  pure ()
+
+-- =============================================================================
+-- TEST: DIRECT TRANSFER WITH AUDIT EVENT
+-- =============================================================================
+
+testDirectTransferWithAuditEvent : Script ()
+testDirectTransferWithAuditEvent = script do
+  debug ">>> Testing direct transfer with audit event..."
+  
+  issuer <- allocateParty "BridgeIssuer"
+  alice <- allocateParty "Alice"
+  bob <- allocateParty "Bob"
+  auditor <- allocateParty "Auditor"
+  
+  tokenManagerCid <- submit issuer do
+    createCmd CIP56Manager with
+      issuer = issuer
+      meta = promptMetadata
+  
+  configCid <- submit issuer do
+    createCmd WayfinderBridgeConfig with
+      issuer = issuer
+      tokenManagerCid = tokenManagerCid
+      auditObservers = [auditor]
+  
+  let aliceFp = "0xAliceFingerprint"
+  let bobFp = "0xBobFingerprint"
+  let mintTime = time (date 2025 Jan 1) 12 0 0
+  let transferTime = time (date 2025 Jan 1) 14 0 0
+  
+  -- Mint to Alice
+  (aliceHoldingCid, _) <- submit issuer do
+    exerciseCmd configCid DirectMint with
+      recipient = alice
+      amount = 1000.0
+      evmTxHash = "admin-mint"
+      fingerprint = aliceFp
+      timestamp = mintTime
+  
+  -- Transfer 300 from Alice to Bob
+  (aliceRemainderCid, bobHoldingCid, transferEventCid) <- submit issuer do
+    exerciseCmd configCid DirectTransfer with
+      senderHoldingCid = aliceHoldingCid
+      recipient = bob
+      amount = 300.0
+      senderFingerprint = aliceFp
+      recipientFingerprint = bobFp
+      timestamp = transferTime
+  
+  -- Verify Bob's holding
+  Some bobHolding <- queryContractId bob bobHoldingCid
+  assertMsg "Bob should have 300" (bobHolding.amount == 300.0)
+  
+  -- Verify Alice's remainder
+  case aliceRemainderCid of
+    Some remainderCid -> do
+      Some remainder <- queryContractId alice remainderCid
+      assertMsg "Alice should have 700 remainder" (remainder.amount == 700.0)
+    None -> fail "Expected Alice to have remainder"
+  
+  -- Verify transfer audit event
+  Some transferEvent <- queryContractId issuer transferEventCid
+  assertMsg "Transfer amount correct" (transferEvent.amount == 300.0)
+  assertMsg "Transfer sender correct" (transferEvent.sender == alice)
+  assertMsg "Transfer recipient correct" (transferEvent.recipient == bob)
+  assertMsg "Sender fingerprint correct" (transferEvent.senderFingerprint == aliceFp)
+  assertMsg "Recipient fingerprint correct" (transferEvent.recipientFingerprint == bobFp)
+  
+  -- Verify auditor can see transfer event
+  Some transferEventFromAuditor <- queryContractId auditor transferEventCid
+  assertMsg "Auditor can see transfer event" (transferEventFromAuditor.amount == 300.0)
+  
+  debug "    [OK] Direct transfer with audit event works correctly."
   pure ()
 
 -- =============================================================================
@@ -193,6 +346,7 @@ testFingerprintMismatchRejected = script do
     createCmd WayfinderBridgeConfig with
       issuer = issuer
       tokenManagerCid = tokenManagerCid
+      auditObservers = []
   
   -- Register Alice with one fingerprint
   let aliceFingerprint = "1220aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -218,22 +372,24 @@ testFingerprintMismatchRejected = script do
     exerciseCmd configCid ProcessDepositAndMint with
       depositCid = depositCid
       mappingCid = aliceMappingCid  -- Wrong mapping!
+      timestamp = testTime
   
   debug "    [OK] Fingerprint mismatch correctly rejected."
   pure ()
 
 -- =============================================================================
--- MULTIPLE USERS TEST
+-- MULTIPLE USERS TEST WITH AUDIT EVENTS
 -- =============================================================================
 
 testMultipleUsers : Script ()
 testMultipleUsers = script do
-  debug ">>> Testing multiple users..."
+  debug ">>> Testing multiple users with audit events..."
   
   issuer <- allocateParty "BridgeIssuer"
   alice <- allocateParty "Alice"
   bob <- allocateParty "Bob"
   carol <- allocateParty "Carol"
+  auditor <- allocateParty "Auditor"
   
   tokenManagerCid <- submit issuer do
     createCmd CIP56Manager with
@@ -244,6 +400,7 @@ testMultipleUsers = script do
     createCmd WayfinderBridgeConfig with
       issuer = issuer
       tokenManagerCid = tokenManagerCid
+      auditObservers = [auditor]
   
   -- Register all users
   let aliceFp = "1220aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -279,10 +436,11 @@ testMultipleUsers = script do
       evmTxHash = "0xAlice..."
       timestamp = testTime
   
-  aliceHolding <- submit issuer do
+  (aliceHolding, aliceMintEvent) <- submit issuer do
     exerciseCmd configCid ProcessDepositAndMint with
       depositCid = aliceDeposit
       mappingCid = aliceMapping
+      timestamp = testTime
   
   -- Bob deposits
   bobDeposit <- submit issuer do
@@ -292,10 +450,11 @@ testMultipleUsers = script do
       evmTxHash = "0xBob..."
       timestamp = testTime
   
-  bobHolding <- submit issuer do
+  (bobHolding, bobMintEvent) <- submit issuer do
     exerciseCmd configCid ProcessDepositAndMint with
       depositCid = bobDeposit
       mappingCid = bobMapping
+      timestamp = testTime
   
   -- Carol deposits
   carolDeposit <- submit issuer do
@@ -305,10 +464,11 @@ testMultipleUsers = script do
       evmTxHash = "0xCarol..."
       timestamp = testTime
   
-  carolHolding <- submit issuer do
+  (carolHolding, carolMintEvent) <- submit issuer do
     exerciseCmd configCid ProcessDepositAndMint with
       depositCid = carolDeposit
       mappingCid = carolMapping
+      timestamp = testTime
   
   -- Verify all holdings
   Some ah <- queryContractId alice aliceHolding
@@ -319,5 +479,14 @@ testMultipleUsers = script do
   assertMsg "Bob amount" (bh.amount == 200.0)
   assertMsg "Carol amount" (ch.amount == 300.0)
   
-  debug "    [OK] All users received correct amounts."
+  -- Verify auditor can see all mint events
+  Some amFromAuditor <- queryContractId auditor aliceMintEvent
+  Some bmFromAuditor <- queryContractId auditor bobMintEvent
+  Some cmFromAuditor <- queryContractId auditor carolMintEvent
+  
+  assertMsg "Auditor sees Alice event" (amFromAuditor.amount == 100.0)
+  assertMsg "Auditor sees Bob event" (bmFromAuditor.amount == 200.0)
+  assertMsg "Auditor sees Carol event" (cmFromAuditor.amount == 300.0)
+  
+  debug "    [OK] All users received correct amounts with audit events."
   pure ()

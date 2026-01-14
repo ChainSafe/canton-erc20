@@ -24,11 +24,12 @@ testFullCycle = script do
       issuer = issuer
       meta = promptMetadata
 
-  -- 3. Deploy Bridge Config (issuer-centric)
+  -- 3. Deploy Bridge Config (issuer-centric) with audit observers
   configCid <- submit issuer do
     createCmd WayfinderBridgeConfig with
       issuer = issuer
       tokenManagerCid = tokenManagerCid
+      auditObservers = []
 
   -- 4. Register Alice (issuer creates fingerprint mapping)
   let aliceFingerprint = "1220aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -50,11 +51,12 @@ testFullCycle = script do
       evmTxHash = "0xDepositTx..."
       timestamp = testTime
 
-  -- Issuer processes deposit and mints
-  holdingCid <- submit issuer do
+  -- Issuer processes deposit and mints (now returns tuple with audit event)
+  (holdingCid, _mintEventCid) <- submit issuer do
     exerciseCmd configCid ProcessDepositAndMint with
       depositCid = depositCid
       mappingCid = aliceMappingCid
+      timestamp = testTime
 
   -- Verify Alice has funds
   Some holding <- queryContractId alice holdingCid

@@ -1,4 +1,4 @@
-name: bridge-cbtc
+name: native-token-tests
 version: 1.1.0
 sdk-version: 3.4.8
 
@@ -6,8 +6,10 @@ source: src
 dependencies:
   - daml-prim
   - daml-stdlib
+  - daml-script
 
 data-dependencies:
   - ../common/.daml/dist/common-1.1.0.dar
   - ../cip56-token/.daml/dist/cip56-token-1.1.0.dar
-  - ../bridge-core/.daml/dist/bridge-core-1.1.0.dar
+  - ../native-token/.daml/dist/native-token-1.1.0.dar
+

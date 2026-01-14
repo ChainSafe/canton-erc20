@@ -13,6 +13,7 @@ import Common.Types
 import Common.FingerprintAuth
 import CIP56.Token
 import Bridge.Contracts
+import Bridge.Events
 
 -- =============================================================================
 -- WAYFINDER TOKEN METADATA
@@ -40,8 +41,10 @@ template WayfinderBridgeConfig
   with
     issuer : Party                          -- Bridge issuer/operator
     tokenManagerCid : ContractId CIP56Manager
+    auditObservers : [Party]                -- Parties who can observe audit events
   where
     signatory issuer
+    observer auditObservers
 
     -- =========================================================================
     -- METADATA
@@ -50,6 +53,24 @@ template WayfinderBridgeConfig
     nonconsuming choice GetMetadata : ExtendedMetadata
       controller issuer
       do pure promptMetadata
+
+    -- =========================================================================
+    -- AUDIT OBSERVER MANAGEMENT
+    -- =========================================================================
+
+    -- | Add a new audit observer
+    choice AddAuditObserver : ContractId WayfinderBridgeConfig
+      with
+        newObserver : Party
+      controller issuer
+      do create this with auditObservers = newObserver :: auditObservers
+
+    -- | Remove an audit observer
+    choice RemoveAuditObserver : ContractId WayfinderBridgeConfig
+      with
+        observerToRemove : Party
+      controller issuer
+      do create this with auditObservers = filter (/= observerToRemove) auditObservers
 
     -- =========================================================================
     -- PARTY MANAGEMENT (Issuer allocates parties for users)
@@ -98,14 +119,15 @@ template WayfinderBridgeConfig
           tokenId = "PROMPT"
           createdAt = timestamp
 
-    -- | Process deposit and mint tokens
+    -- | Process deposit and mint tokens with audit event
     --
     -- After creating PendingDeposit, issuer resolves fingerprint and mints.
     -- This is a convenience choice that does everything in one step.
-    nonconsuming choice ProcessDepositAndMint : ContractId CIP56Holding
+    nonconsuming choice ProcessDepositAndMint : (ContractId CIP56Holding, ContractId BridgeMintEvent)
       with
         depositCid  : ContractId PendingDeposit
         mappingCid  : ContractId FingerprintMapping
+        timestamp   : Time          -- Event timestamp
       controller issuer
       do
         -- Process the deposit to get receipt
@@ -113,9 +135,23 @@ template WayfinderBridgeConfig
         receipt <- fetch receiptCid
         
         -- Mint tokens to the resolved recipient
-        exercise tokenManagerCid Mint with
+        holdingCid <- exercise tokenManagerCid Mint with
           to = receipt.recipient
           amount = receipt.amount
+        
+        -- Create audit event
+        eventCid <- create BridgeMintEvent with
+          issuer = issuer
+          recipient = receipt.recipient
+          amount = receipt.amount
+          holdingCid = holdingCid
+          tokenSymbol = promptMetadata.symbol
+          evmTxHash = receipt.evmTxHash
+          fingerprint = receipt.fingerprint
+          timestamp = timestamp
+          auditObservers = auditObservers
+        
+        pure (holdingCid, eventCid)
 
     -- =========================================================================
     -- WITHDRAWAL FLOW: Canton → EVM
@@ -143,24 +179,95 @@ template WayfinderBridgeConfig
           amount = amount
           evmDestination = evmDestination
           fingerprint = mapping.fingerprint
+          tokenSymbol = promptMetadata.symbol
+          auditObservers = auditObservers
 
     -- =========================================================================
     -- DIRECT MINT (Admin/Testing)
     -- =========================================================================
     
-    -- | Direct mint to a Party (bypasses fingerprint lookup)
+    -- | Direct mint to a Party with audit event (bypasses fingerprint lookup)
     --
     -- Use for:
     -- - Testing without fingerprint setup
     -- - Admin operations
     -- - Initial token distribution
-    nonconsuming choice DirectMint : ContractId CIP56Holding
+    nonconsuming choice DirectMint : (ContractId CIP56Holding, ContractId BridgeMintEvent)
       with
-        recipient : Party
-        amount    : Decimal
+        recipient   : Party
+        amount      : Decimal
+        evmTxHash   : Text          -- Source EVM transaction (or "admin-mint" for testing)
+        fingerprint : Text          -- User fingerprint (or "admin" for testing)
+        timestamp   : Time          -- Event timestamp
       controller issuer
       do
         assertMsg "amount > 0" (amount > 0.0)
-        exercise tokenManagerCid Mint with
+        
+        -- Mint tokens
+        holdingCid <- exercise tokenManagerCid Mint with
           to = recipient
           amount = amount
+        
+        -- Create audit event
+        eventCid <- create BridgeMintEvent with
+          issuer = issuer
+          recipient = recipient
+          amount = amount
+          holdingCid = holdingCid
+          tokenSymbol = promptMetadata.symbol
+          evmTxHash = evmTxHash
+          fingerprint = fingerprint
+          timestamp = timestamp
+          auditObservers = auditObservers
+        
+        pure (holdingCid, eventCid)
+
+    -- =========================================================================
+    -- DIRECT TRANSFER (Admin/Testing)
+    -- =========================================================================
+    
+    -- | Direct transfer between parties with audit event
+    --
+    -- Use for:
+    -- - Testing transfers
+    -- - Admin operations
+    nonconsuming choice DirectTransfer : (Optional (ContractId CIP56Holding), ContractId CIP56Holding, ContractId BridgeTransferEvent)
+      with
+        senderHoldingCid     : ContractId CIP56Holding
+        recipient            : Party
+        amount               : Decimal
+        senderFingerprint    : Text
+        recipientFingerprint : Text
+        timestamp            : Time
+      controller issuer
+      do
+        assertMsg "amount > 0" (amount > 0.0)
+        senderHolding <- fetch senderHoldingCid
+        let sender = senderHolding.owner
+        assertMsg "sender has sufficient balance" (senderHolding.amount >= amount)
+        
+        -- Burn from sender
+        senderRemainderCid <- exercise tokenManagerCid Burn with
+          holdingCid = senderHoldingCid
+          amount = amount
+        
+        -- Mint to recipient
+        recipientHoldingCid <- exercise tokenManagerCid Mint with
+          to = recipient
+          amount = amount
+        
+        -- Create transfer audit event
+        eventCid <- create BridgeTransferEvent with
+          issuer = issuer
+          sender = sender
+          recipient = recipient
+          amount = amount
+          senderRemainderCid = senderRemainderCid
+          recipientHoldingCid = recipientHoldingCid
+          tokenSymbol = promptMetadata.symbol
+          senderFingerprint = senderFingerprint
+          recipientFingerprint = recipientFingerprint
+          timestamp = timestamp
+          auditObservers = auditObservers
+        
+        pure (senderRemainderCid, recipientHoldingCid, eventCid)

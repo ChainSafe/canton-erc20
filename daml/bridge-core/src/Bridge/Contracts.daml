@@ -12,6 +12,7 @@ module Bridge.Contracts where
 
 import Common.Types
 import CIP56.Token
+import Bridge.Events
 
 -- =============================================================================
 -- DEPOSIT FLOW: EVM → Canton (Issuer-Controlled)
@@ -36,18 +37,38 @@ template MintCommand
     amount          : Decimal
     evmTxHash       : Text          -- Source EVM transaction
     fingerprint     : Text          -- Original fingerprint (for audit)
+    tokenSymbol     : Text          -- Token symbol for audit event
+    auditObservers  : [Party]       -- Parties who can observe audit events
   where
     signatory issuer
-    observer recipient
+    observer recipient, auditObservers
     
-    -- | Execute the mint
-    choice ExecuteMint : ContractId CIP56Holding
+    -- | Execute the mint and create audit event
+    choice ExecuteMint : (ContractId CIP56Holding, ContractId BridgeMintEvent)
+      with
+        timestamp : Time            -- Event timestamp
       controller issuer
       do
         assertMsg "amount > 0" (amount > 0.0)
-        exercise tokenManagerCid Mint with
+        
+        -- Mint the tokens
+        holdingCid <- exercise tokenManagerCid Mint with
           to = recipient
           amount = amount
+        
+        -- Create audit event
+        eventCid <- create BridgeMintEvent with
+          issuer = issuer
+          recipient = recipient
+          amount = amount
+          holdingCid = holdingCid
+          tokenSymbol = tokenSymbol
+          evmTxHash = evmTxHash
+          fingerprint = fingerprint
+          timestamp = timestamp
+          auditObservers = auditObservers
+        
+        pure (holdingCid, eventCid)
 
 -- =============================================================================
 -- WITHDRAWAL FLOW: Canton → EVM (Issuer-Controlled)
@@ -56,7 +77,7 @@ template MintCommand
 -- Flow:
 -- 1. Issuer initiates withdrawal on behalf of user (off-chain request)
 -- 2. Issuer locks user's tokens
--- 3. Issuer burns and creates WithdrawalEvent
+-- 3. Issuer burns and creates WithdrawalEvent + BridgeBurnEvent
 -- 4. Middleware processes WithdrawalEvent → releases on EVM
 
 -- | Withdrawal request created by issuer on behalf of user
@@ -72,12 +93,16 @@ template WithdrawalRequest
     amount          : Decimal
     evmDestination  : EvmAddress    -- Where to send on EVM
     fingerprint     : Text          -- User's fingerprint (for audit)
+    tokenSymbol     : Text          -- Token symbol for audit event
+    auditObservers  : [Party]       -- Parties who can observe audit events
   where
     signatory issuer
-    observer userParty
+    observer userParty, auditObservers
     
-    -- | Process the withdrawal
-    choice ProcessWithdrawal : ContractId WithdrawalEvent
+    -- | Process the withdrawal and create audit events
+    choice ProcessWithdrawal : (ContractId WithdrawalEvent, ContractId BridgeBurnEvent)
+      with
+        timestamp : Time            -- Event timestamp
       controller issuer
       do
         -- Verify holding
@@ -87,16 +112,32 @@ template WithdrawalRequest
         assertMsg "Amount must be positive" (amount > 0.0)
         
         -- Burn the tokens (partial burn returns remainder to user)
-        exercise tokenManagerCid Burn with holdingCid = holdingCid, amount = amount
+        remainderCid <- exercise tokenManagerCid Burn with holdingCid = holdingCid, amount = amount
         
-        -- Create event for middleware
-        create WithdrawalEvent with
+        -- Create withdrawal event for middleware
+        withdrawalCid <- create WithdrawalEvent with
           issuer = issuer
           userParty = userParty
           evmDestination = evmDestination
           amount = amount
           fingerprint = fingerprint
+          tokenSymbol = tokenSymbol
+          auditObservers = auditObservers
           status = Pending
+        
+        -- Create burn audit event
+        burnEventCid <- create BridgeBurnEvent with
+          issuer = issuer
+          burnedFrom = userParty
+          amount = amount
+          remainderCid = remainderCid
+          evmDestination = evmDestination
+          tokenSymbol = tokenSymbol
+          fingerprint = fingerprint
+          timestamp = timestamp
+          auditObservers = auditObservers
+        
+        pure (withdrawalCid, burnEventCid)
 
 -- | Withdrawal event for middleware to process
 template WithdrawalEvent
@@ -106,10 +147,12 @@ template WithdrawalEvent
     evmDestination  : EvmAddress
     amount          : Decimal
     fingerprint     : Text
+    tokenSymbol     : Text          -- Token symbol for reference
+    auditObservers  : [Party]       -- Parties who can observe this event
     status          : WithdrawalStatus
   where
     signatory issuer
-    observer userParty
+    observer userParty, auditObservers
     
     -- | Mark as completed after EVM release
     choice CompleteWithdrawal : ContractId WithdrawalEvent
