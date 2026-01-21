@@ -1,7 +1,7 @@
 # Test package for bridge-wayfinder module
 # Contains test scripts that use daml-script
 name: bridge-wayfinder-tests
-version: 1.1.0
+version: 1.2.0
 sdk-version: 3.4.8
 
 source: src
@@ -10,7 +10,7 @@ dependencies:
   - daml-stdlib
   - daml-script
 data-dependencies:
-  - ../common/.daml/dist/common-1.1.0.dar
-  - ../cip56-token/.daml/dist/cip56-token-1.1.0.dar
-  - ../bridge-core/.daml/dist/bridge-core-1.1.0.dar
-  - ../bridge-wayfinder/.daml/dist/bridge-wayfinder-1.1.0.dar
+  - ../common/.daml/dist/common-1.2.0.dar
+  - ../cip56-token/.daml/dist/cip56-token-1.2.0.dar
+  - ../bridge-core/.daml/dist/bridge-core-1.2.0.dar
+  - ../bridge-wayfinder/.daml/dist/bridge-wayfinder-1.2.0.dar

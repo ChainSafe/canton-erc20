@@ -1,7 +1,7 @@
 # Test package for common module
 # Contains test scripts that use daml-script
 name: common-tests
-version: 1.1.0
+version: 1.2.0
 sdk-version: 3.4.8
 
 source: src
@@ -10,4 +10,4 @@ dependencies:
   - daml-stdlib
   - daml-script
 data-dependencies:
-  - ../common/.daml/dist/common-1.1.0.dar
+  - ../common/.daml/dist/common-1.2.0.dar
