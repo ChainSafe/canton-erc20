@@ -82,7 +82,16 @@ canton-erc20/
 │   ├── bridge-wayfinder-tests/         # Tests for bridge-wayfinder
 │   └── integration-tests/              # End-to-end tests
 │
+├── ethereum/                           # EVM Bridge (Solidity)
+│   ├── contracts/                      # Solidity smart contracts
+│   │   ├── CantonBridge.sol            # Main bridge contract
+│   │   └── TokenRegistry.sol           # Token registration
+│   ├── script/                         # Foundry deployment scripts
+│   ├── test/                           # Solidity tests
+│   └── web/                            # Bridge web UI
+│
 ├── docs/                               # Documentation
+│   ├── E2E-TESTNET-SETUP.md            # End-to-end testing guide
 │   └── DAML_ARCHITECTURE_PROPOSAL.md   # Technical design document
 ├── CHANGELOG.md                        # Version history
 └── README.md                           # This file
@@ -93,6 +102,8 @@ canton-erc20/
 ### Prerequisites
 
 - **Daml SDK 3.4.8** - [Install Guide](https://docs.daml.com/getting-started/installation.html)
+- **Go 1.21+** - For middleware (optional, for E2E testing)
+- **Foundry** - For Solidity contracts (optional, for E2E testing)
 
 ```bash
 daml version  # Should show 3.4.8
@@ -205,6 +216,28 @@ daml script --dar .daml/dist/bridge-wayfinder-tests-1.1.0.dar \
 | `bridge-core-tests` | `Bridge.Script:testBridgeFlow` | Full bridge cycle |
 | `bridge-wayfinder-tests` | `Wayfinder.Test:testWayfinderBridge` | E2E Wayfinder flow |
 
+## EVM Bridge
+
+The `ethereum/` directory contains the Solidity smart contracts for the EVM side of the bridge:
+
+| Contract | Description |
+|----------|-------------|
+| `CantonBridge.sol` | Main bridge contract with deposit/withdraw |
+| `TokenRegistry.sol` | Registry for bridgeable ERC-20 tokens |
+
+See [ethereum/README.md](ethereum/README.md) for contract details.
+
+## E2E Testing
+
+For full end-to-end testing with Ethereum integration, see:
+
+**[docs/E2E-TESTNET-SETUP.md](docs/E2E-TESTNET-SETUP.md)** - Complete guide covering:
+- Canton Network quickstart setup
+- EVM contract deployment (Sepolia)
+- Middleware configuration
+- Deposit/withdrawal testing
+- Troubleshooting
+
 ## Security & Privacy
 
 All contracts implement Canton privacy best practices:
@@ -220,7 +253,9 @@ All contracts implement Canton privacy best practices:
 | Document | Description |
 |----------|-------------|
 | [CHANGELOG.md](CHANGELOG.md) | Version history and migration guides |
+| [E2E Testnet Setup](docs/E2E-TESTNET-SETUP.md) | Full end-to-end testing guide |
 | [Architecture Proposal](docs/DAML_ARCHITECTURE_PROPOSAL.md) | Technical design and roadmap |
+| [EVM Bridge](ethereum/README.md) | Solidity contracts documentation |
 
 ## License
 
