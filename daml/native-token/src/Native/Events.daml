@@ -29,20 +29,3 @@ template BurnEvent
   where
     signatory issuer
     observer burnedFrom, auditObservers
-
-template TransferEvent
-  with
-    issuer : Party
-    sender : Party
-    recipient : Party
-    amount : Decimal
-    senderRemainderCid : Optional (ContractId CIP56Holding)
-    recipientHoldingCid : ContractId CIP56Holding
-    tokenSymbol : Text
-    timestamp : Time
-    auditObservers : [Party]
-    senderFingerprint : Text     -- Sender's EVM-derived fingerprint
-    recipientFingerprint : Text  -- Recipient's EVM-derived fingerprint
-  where
-    signatory issuer
-    observer sender, recipient, auditObservers
