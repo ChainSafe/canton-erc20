@@ -61,37 +61,10 @@ template NativeTokenConfig
         
         pure (remainderCid, eventCid)
 
-    nonconsuming choice IssuerTransfer : (Optional (ContractId CIP56Holding), ContractId CIP56Holding, ContractId TransferEvent)
-      with
-        senderHoldingCid : ContractId CIP56Holding
-        recipient : Party
-        amount : Decimal
-        eventTime : Time
-        senderFingerprint : Text     -- Sender's EVM-derived fingerprint
-        recipientFingerprint : Text  -- Recipient's EVM-derived fingerprint
-      controller issuer
-      do
-        assertMsg "amount must be positive" (amount > 0.0)
-        senderHolding <- fetch senderHoldingCid
-        let sender = senderHolding.owner
-        assertMsg "sender has sufficient balance" (senderHolding.amount >= amount)
-        
-        senderRemainderCid <- exercise tokenManagerCid Burn with
-          holdingCid = senderHoldingCid, amount
-        
-        recipientHoldingCid <- exercise tokenManagerCid Mint with
-          to = recipient, amount
-        
-        eventCid <- create TransferEvent with
-          issuer, sender, recipient, amount
-          senderRemainderCid, recipientHoldingCid
-          tokenSymbol = meta.symbol
-          timestamp = eventTime
-          auditObservers = auditObservers
-          senderFingerprint = senderFingerprint
-          recipientFingerprint = recipientFingerprint
-        
-        pure (senderRemainderCid, recipientHoldingCid, eventCid)
+    -- NOTE: IssuerTransfer choice has been removed.
+    -- With user-owned holdings (custodial key model), transfers use the standard
+    -- CIP56Holding.Transfer choice which is owner-controlled.
+    -- The API server signs as the user's Canton party.
 
     nonconsuming choice GetMetadata : ExtendedMetadata
       controller issuer
