@@ -3,25 +3,31 @@
 set -euo pipefail
 
 # =============================================================================
-# Build All DAML Packages
+# Build All Packages (DAML + Solidity)
 # =============================================================================
-# This script builds all DAML packages in the correct dependency order.
+# This script builds all DAML packages in the correct dependency order,
+# and optionally builds Solidity contracts.
 #
 # Usage:
-#   ./scripts/build-all.sh [--clean] [--verbose]
+#   ./scripts/build-all.sh [--clean] [--verbose] [--solidity] [--daml-only]
 #
 # Options:
-#   --clean     Run daml clean before building each package
-#   --verbose   Show detailed build output
+#   --clean       Run daml clean before building each package
+#   --verbose     Show detailed build output
+#   --solidity    Also build Solidity contracts (requires Foundry)
+#   --daml-only   Only build DAML packages (skip Solidity even if --solidity)
 # =============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 DAML_DIR="${REPO_ROOT}/daml"
+ETHEREUM_DIR="${REPO_ROOT}/ethereum"
 
 # Parse arguments
 CLEAN=false
 VERBOSE=false
+BUILD_SOLIDITY=false
+DAML_ONLY=false
 
 for arg in "$@"; do
   case $arg in
@@ -33,9 +39,17 @@ for arg in "$@"; do
       VERBOSE=true
       shift
       ;;
+    --solidity)
+      BUILD_SOLIDITY=true
+      shift
+      ;;
+    --daml-only)
+      DAML_ONLY=true
+      shift
+      ;;
     *)
       echo "Unknown option: $arg"
-      echo "Usage: $0 [--clean] [--verbose]"
+      echo "Usage: $0 [--clean] [--verbose] [--solidity] [--daml-only]"
       exit 1
       ;;
   esac
@@ -159,7 +173,7 @@ if [[ ${#FAILED_PACKAGES[@]} -gt 0 ]]; then
   echo ""
   exit 1
 else
-  success "All packages built successfully!"
+  success "All DAML packages built successfully!"
   echo ""
   echo "DARs created in:"
   for pkg in "${PACKAGES[@]}"; do
@@ -170,5 +184,73 @@ else
     fi
   done
   echo ""
-  exit 0
 fi
+
+# =============================================================================
+# Build Solidity Contracts (if requested)
+# =============================================================================
+
+build_solidity() {
+  if [[ ! -d "${ETHEREUM_DIR}" ]]; then
+    warn "Ethereum directory not found: ${ETHEREUM_DIR}"
+    return 1
+  fi
+
+  log "Building Solidity contracts..."
+  cd "${ETHEREUM_DIR}"
+
+  # Check for Foundry
+  local FORGE_CMD=""
+  if command -v forge &> /dev/null; then
+    FORGE_CMD="forge"
+  elif [[ -f "$HOME/.foundry/bin/forge" ]]; then
+    FORGE_CMD="$HOME/.foundry/bin/forge"
+  else
+    error "Foundry not found. Install it with: curl -L https://foundry.paradigm.xyz | bash"
+    return 1
+  fi
+
+  # Clean if requested
+  if [[ "${CLEAN}" == "true" ]]; then
+    ${FORGE_CMD} clean 2>/dev/null || true
+  fi
+
+  # Build
+  if [[ "${VERBOSE}" == "true" ]]; then
+    if ${FORGE_CMD} build; then
+      success "Solidity contracts built successfully"
+      return 0
+    else
+      error "Failed to build Solidity contracts"
+      return 1
+    fi
+  else
+    if ${FORGE_CMD} build 2>&1 | grep -E "(Compiling|Compiler|error|warning)" || true; then
+      success "Solidity contracts built successfully"
+      return 0
+    else
+      error "Failed to build Solidity contracts"
+      return 1
+    fi
+  fi
+}
+
+if [[ "${BUILD_SOLIDITY}" == "true" && "${DAML_ONLY}" != "true" ]]; then
+  echo ""
+  echo "=========================================="
+  echo "Building Solidity Contracts"
+  echo "=========================================="
+  echo ""
+  if ! build_solidity; then
+    error "Solidity build failed"
+    exit 1
+  fi
+  echo ""
+  success "All builds completed!"
+fi
+
+if [[ ${#FAILED_PACKAGES[@]} -gt 0 ]]; then
+  exit 1
+fi
+
+exit 0
