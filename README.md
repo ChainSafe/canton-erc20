@@ -114,7 +114,7 @@ daml version  # Should show 3.4.8
 From the parent `canton-middleware` repository:
 
 ```bash
-./scripts/build-dars.sh
+./scripts/setup/build-dars.sh
 ```
 
 Or build individually from this directory:
