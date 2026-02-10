@@ -1,5 +1,5 @@
 name: integration-tests
-version: 1.4.0
+version: 1.5.0
 sdk-version: 3.4.8
 
 source: .
@@ -9,7 +9,7 @@ dependencies:
   - daml-script
 
 data-dependencies:
-  - ../common/.daml/dist/common-1.4.0.dar
-  - ../cip56-token/.daml/dist/cip56-token-1.4.0.dar
-  - ../bridge-core/.daml/dist/bridge-core-1.4.0.dar
-  - ../bridge-wayfinder/.daml/dist/bridge-wayfinder-1.4.0.dar
+  - ../common/.daml/dist/common-1.5.0.dar
+  - ../cip56-token/.daml/dist/cip56-token-1.5.0.dar
+  - ../bridge-core/.daml/dist/bridge-core-1.5.0.dar
+  - ../bridge-wayfinder/.daml/dist/bridge-wayfinder-1.5.0.dar

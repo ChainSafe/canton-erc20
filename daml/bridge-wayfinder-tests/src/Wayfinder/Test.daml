@@ -11,8 +11,9 @@ import Daml.Script
 import DA.Time (time)
 import DA.Date (date, Month(..))
 import Common.Types
+import Common.FingerprintAuth (FingerprintMapping(..))
 import CIP56.Token
-import CIP56.Config (TokenConfig(..))
+import CIP56.Config (TokenConfig(..), IssuerMint(..))
 import Bridge.Contracts
 import Wayfinder.Bridge
 
@@ -65,13 +66,15 @@ testIssuerCentricBridge = script do
   let bobFingerprint   = "1220bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
   
   aliceMappingCid <- submit issuer do
-    exerciseCmd configCid RegisterUser with
+    createCmd FingerprintMapping with
+      issuer = issuer
       userParty = alice
       fingerprint = aliceFingerprint
       evmAddress = Some (EvmAddress "0xAliceEthWallet...")
   
   bobMappingCid <- submit issuer do
-    exerciseCmd configCid RegisterUser with
+    createCmd FingerprintMapping with
+      issuer = issuer
       userParty = bob
       fingerprint = bobFingerprint
       evmAddress = Some (EvmAddress "0xBobEthWallet...")
@@ -125,12 +128,12 @@ testIssuerCentricBridge = script do
   let bobMintTime = time (date 2025 Jan 1) 14 0 0
   
   (bobHoldingCid, bobMintEventCid) <- submit issuer do
-    exerciseCmd configCid DirectMint with
+    exerciseCmd tokenConfigCid IssuerMint with
       recipient = bob
       amount = 40.0
-      evmTxHash = "admin-mint"
-      fingerprint = bobFingerprint
-      timestamp = bobMintTime
+      eventTime = bobMintTime
+      userFingerprint = bobFingerprint
+      evmTxHash = Some "admin-mint"
   
   Some bobHolding <- queryContractId bob bobHoldingCid
   assertMsg "Bob should have 40.0 PROMPT" (bobHolding.amount == 40.0)
@@ -200,60 +203,6 @@ testIssuerCentricBridge = script do
   pure ()
 
 -- =============================================================================
--- TEST: AUDIT OBSERVER MANAGEMENT
--- =============================================================================
-
-testAuditObserverManagement : Script ()
-testAuditObserverManagement = script do
-  debug ">>> Testing audit observer management..."
-  
-  issuer <- allocateParty "BridgeIssuer"
-  auditor1 <- allocateParty "Auditor1"
-  auditor2 <- allocateParty "Auditor2"
-  
-  tokenManagerCid <- submit issuer do
-    createCmd CIP56Manager with
-      issuer = issuer
-      meta = promptMetadata
-
-  tokenConfigCid <- submit issuer do
-    createCmd TokenConfig with
-      issuer = issuer
-      tokenManagerCid = tokenManagerCid
-      meta = promptMetadata
-      auditObservers = []
-  
-  -- Start with auditor1
-  configCid <- submit issuer do
-    createCmd WayfinderBridgeConfig with
-      issuer = issuer
-      tokenConfigCid = tokenConfigCid
-      auditObservers = [auditor1]
-  
-  -- Add auditor2
-  configCid2 <- submit issuer do
-    exerciseCmd configCid AddAuditObserver with
-      newObserver = auditor2
-  
-  -- Verify both auditors are now observers
-  Some config <- queryContractId issuer configCid2
-  assertMsg "Both auditors should be observers" 
-    (auditor1 `elem` config.auditObservers && auditor2 `elem` config.auditObservers)
-  
-  -- Remove auditor1
-  configCid3 <- submit issuer do
-    exerciseCmd configCid2 RemoveAuditObserver with
-      observerToRemove = auditor1
-  
-  -- Verify only auditor2 remains
-  Some finalConfig <- queryContractId issuer configCid3
-  assertMsg "Only auditor2 should remain" 
-    (auditor2 `elem` finalConfig.auditObservers && not (auditor1 `elem` finalConfig.auditObservers))
-  
-  debug "    [OK] Audit observer management works correctly."
-  pure ()
-
--- =============================================================================
 -- FINGERPRINT MISMATCH TEST
 -- =============================================================================
 
@@ -282,10 +231,11 @@ testFingerprintMismatchRejected = script do
       tokenConfigCid = tokenConfigCid
       auditObservers = []
   
-  -- Register Alice with one fingerprint
+  -- Register Alice with one fingerprint (direct creation by issuer)
   let aliceFingerprint = "1220aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   aliceMappingCid <- submit issuer do
-    exerciseCmd configCid RegisterUser with
+    createCmd FingerprintMapping with
+      issuer = issuer
       userParty = alice
       fingerprint = aliceFingerprint
       evmAddress = None
@@ -349,19 +299,22 @@ testMultipleUsers = script do
   let carolFp = "1220cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
   
   aliceMapping <- submit issuer do
-    exerciseCmd configCid RegisterUser with
+    createCmd FingerprintMapping with
+      issuer = issuer
       userParty = alice
       fingerprint = aliceFp
       evmAddress = None
   
   bobMapping <- submit issuer do
-    exerciseCmd configCid RegisterUser with
+    createCmd FingerprintMapping with
+      issuer = issuer
       userParty = bob
       fingerprint = bobFp
       evmAddress = None
   
   carolMapping <- submit issuer do
-    exerciseCmd configCid RegisterUser with
+    createCmd FingerprintMapping with
+      issuer = issuer
       userParty = carol
       fingerprint = carolFp
       evmAddress = None
