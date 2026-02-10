@@ -9,11 +9,8 @@
 /daml/cip56-token/              @your-org/canton-bridge-leads
 /daml/bridge-core/              @your-org/canton-bridge-leads
 
-# Client-specific bridges - can be owned by client teams
+# Bridge
 /daml/bridge-wayfinder/         @your-org/wayfinder-team
-/daml/bridge-usdc/              @your-org/usdc-team
-/daml/bridge-cbtc/              @your-org/cbtc-team
-/daml/bridge-generic/           @your-org/canton-bridge-team
 
 # Documentation
 /docs/                          @your-org/canton-bridge-team
@@ -25,4 +22,3 @@
 
 # Security-sensitive files
 /daml/*/src/**/Compliance.daml  @your-org/security-team @your-org/canton-bridge-leads
-

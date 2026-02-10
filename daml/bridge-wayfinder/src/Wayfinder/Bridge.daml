@@ -1,19 +1,28 @@
--- | Wayfinder Bridge - Issuer-Centric Implementation
+-- | Wayfinder Bridge - EVM Bridge Layer
 --
--- This module implements the Wayfinder PROMPT token bridge using
--- the issuer-centric model where:
--- - ISSUER controls all party allocations
--- - ISSUER knows all fingerprints (from AllocateParty responses)
--- - ISSUER mints/burns on behalf of users
--- - End users do NOT manage Canton keys
+-- This module implements the Wayfinder PROMPT token bridge.
+-- It is a thin EVM bridge layer that handles only EVM-specific concerns:
+-- - Party/fingerprint registration
+-- - EVM deposit validation and pending deposit management
+-- - Withdrawal initiation with EVM destination
+--
+-- The bridge holds a tokenConfigCid reference and delegates all mint/burn
+-- operations to TokenConfig (CIP56.Config). It does not create holdings
+-- or audit events directly.
+--
+-- To bridge a different ERC-20 token (e.g. USDC), create a new bridge
+-- config module that follows this same pattern: hold a tokenConfigCid
+-- pointing at a separate TokenConfig instance with its own CIP56Manager
+-- and metadata. The core mint/burn/event logic is shared and identical.
 
 module Wayfinder.Bridge where
 
 import Common.Types
 import Common.FingerprintAuth
-import CIP56.Token
+import CIP56.Token (CIP56Holding)
+import CIP56.Config hiding (GetMetadata, AddAuditObserver, RemoveAuditObserver, SetMetadata)
+import CIP56.Events (MintEvent)
 import Bridge.Contracts
-import Bridge.Events
 
 -- =============================================================================
 -- WAYFINDER TOKEN METADATA
@@ -30,18 +39,19 @@ promptMetadata = ExtendedMetadata with
   regulatoryInfo = Some "ERC20: 0x28d38df637db75533bd3f71426f3410a82041544"
 
 -- =============================================================================
--- WAYFINDER BRIDGE CONFIG (Issuer-Centric)
+-- WAYFINDER BRIDGE CONFIG (EVM Bridge Layer)
 -- =============================================================================
 
 -- | Configuration for the Wayfinder Bridge
 --
 -- The issuer (operator) controls all bridge operations.
+-- Mint/burn is delegated to the unified TokenConfig.
 -- NOTE: Contract key removed for DAML-LF 2.x compatibility.
 template WayfinderBridgeConfig
   with
-    issuer : Party                          -- Bridge issuer/operator
-    tokenManagerCid : ContractId CIP56Manager
-    auditObservers : [Party]                -- Parties who can observe audit events
+    issuer : Party                              -- Bridge issuer/operator
+    tokenConfigCid : ContractId TokenConfig      -- Unified token config (handles mint/burn)
+    auditObservers : [Party]                    -- Parties who can observe audit events
   where
     signatory issuer
     observer auditObservers
@@ -58,14 +68,12 @@ template WayfinderBridgeConfig
     -- AUDIT OBSERVER MANAGEMENT
     -- =========================================================================
 
-    -- | Add a new audit observer
     choice AddAuditObserver : ContractId WayfinderBridgeConfig
       with
         newObserver : Party
       controller issuer
       do create this with auditObservers = newObserver :: auditObservers
 
-    -- | Remove an audit observer
     choice RemoveAuditObserver : ContractId WayfinderBridgeConfig
       with
         observerToRemove : Party
@@ -77,15 +85,10 @@ template WayfinderBridgeConfig
     -- =========================================================================
     
     -- | Register a user's fingerprint mapping
-    --
-    -- Called by issuer after allocating a Party for a user:
-    -- 1. Issuer calls AllocateParty("UserHint") → "UserHint::1220abc...def"
-    -- 2. Issuer extracts fingerprint: "1220abc...def"
-    -- 3. Issuer calls this to create the mapping
     nonconsuming choice RegisterUser : ContractId FingerprintMapping
       with
-        userParty   : Party         -- The allocated Party
-        fingerprint : Text          -- Extracted from Party ID
+        userParty   : Party
+        fingerprint : Text
         evmAddress  : Optional EvmAddress
       controller issuer
       do
@@ -96,16 +99,13 @@ template WayfinderBridgeConfig
           evmAddress = evmAddress
 
     -- =========================================================================
-    -- DEPOSIT FLOW: EVM → Canton (Fingerprint-Based)
+    -- DEPOSIT FLOW: EVM → Canton
     -- =========================================================================
     
     -- | Create pending deposit from EVM event
-    --
-    -- Middleware sees DepositToCanton event and calls this.
-    -- The fingerprint comes directly from the EVM event (bytes32).
     nonconsuming choice CreatePendingDeposit : ContractId PendingDeposit
       with
-        fingerprint : Text          -- From EVM event (bytes32 as hex)
+        fingerprint : Text
         amount      : Decimal
         evmTxHash   : Text
         timestamp   : Time
@@ -119,48 +119,31 @@ template WayfinderBridgeConfig
           tokenId = "PROMPT"
           createdAt = timestamp
 
-    -- | Process deposit and mint tokens with audit event
-    --
-    -- After creating PendingDeposit, issuer resolves fingerprint and mints.
-    -- This is a convenience choice that does everything in one step.
-    nonconsuming choice ProcessDepositAndMint : (ContractId CIP56Holding, ContractId BridgeMintEvent)
+    -- | Process deposit and mint tokens (delegates to TokenConfig)
+    nonconsuming choice ProcessDepositAndMint : (ContractId CIP56Holding, ContractId MintEvent)
       with
         depositCid  : ContractId PendingDeposit
         mappingCid  : ContractId FingerprintMapping
-        timestamp   : Time          -- Event timestamp
+        timestamp   : Time
       controller issuer
       do
         -- Process the deposit to get receipt
         receiptCid <- exercise depositCid ProcessDeposit with mappingCid = mappingCid
         receipt <- fetch receiptCid
-        
-        -- Mint tokens to the resolved recipient
-        holdingCid <- exercise tokenManagerCid Mint with
-          to = receipt.recipient
-          amount = receipt.amount
-        
-        -- Create audit event
-        eventCid <- create BridgeMintEvent with
-          issuer = issuer
+
+        -- Delegate mint to TokenConfig (unified path)
+        exercise tokenConfigCid IssuerMint with
           recipient = receipt.recipient
           amount = receipt.amount
-          holdingCid = holdingCid
-          tokenSymbol = promptMetadata.symbol
-          evmTxHash = receipt.evmTxHash
-          fingerprint = receipt.fingerprint
-          timestamp = timestamp
-          auditObservers = auditObservers
-        
-        pure (holdingCid, eventCid)
+          eventTime = timestamp
+          userFingerprint = receipt.fingerprint
+          evmTxHash = Some receipt.evmTxHash
 
     -- =========================================================================
     -- WITHDRAWAL FLOW: Canton → EVM
     -- =========================================================================
     
     -- | Initiate withdrawal for a user
-    --
-    -- User requests withdrawal off-chain (via API/UI).
-    -- Issuer creates this to process it.
     nonconsuming choice InitiateWithdrawal : ContractId WithdrawalRequest
       with
         mappingCid      : ContractId FingerprintMapping
@@ -174,7 +157,7 @@ template WayfinderBridgeConfig
         create WithdrawalRequest with
           issuer = issuer
           userParty = mapping.userParty
-          tokenManagerCid = tokenManagerCid
+          tokenConfigCid = tokenConfigCid
           holdingCid = holdingCid
           amount = amount
           evmDestination = evmDestination
@@ -186,39 +169,19 @@ template WayfinderBridgeConfig
     -- DIRECT MINT (Admin/Testing)
     -- =========================================================================
     
-    -- | Direct mint to a Party with audit event (bypasses fingerprint lookup)
-    --
-    -- Use for:
-    -- - Testing without fingerprint setup
-    -- - Admin operations
-    -- - Initial token distribution
-    nonconsuming choice DirectMint : (ContractId CIP56Holding, ContractId BridgeMintEvent)
+    -- | Direct mint to a Party (delegates to TokenConfig)
+    nonconsuming choice DirectMint : (ContractId CIP56Holding, ContractId MintEvent)
       with
         recipient   : Party
         amount      : Decimal
-        evmTxHash   : Text          -- Source EVM transaction (or "admin-mint" for testing)
-        fingerprint : Text          -- User fingerprint (or "admin" for testing)
-        timestamp   : Time          -- Event timestamp
+        evmTxHash   : Text
+        fingerprint : Text
+        timestamp   : Time
       controller issuer
       do
-        assertMsg "amount > 0" (amount > 0.0)
-        
-        -- Mint tokens
-        holdingCid <- exercise tokenManagerCid Mint with
-          to = recipient
-          amount = amount
-        
-        -- Create audit event
-        eventCid <- create BridgeMintEvent with
-          issuer = issuer
+        exercise tokenConfigCid IssuerMint with
           recipient = recipient
           amount = amount
-          holdingCid = holdingCid
-          tokenSymbol = promptMetadata.symbol
-          evmTxHash = evmTxHash
-          fingerprint = fingerprint
-          timestamp = timestamp
-          auditObservers = auditObservers
-        
-        pure (holdingCid, eventCid)
-
+          eventTime = timestamp
+          userFingerprint = fingerprint
+          evmTxHash = Some evmTxHash

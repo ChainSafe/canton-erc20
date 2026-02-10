@@ -1,5 +1,5 @@
 name: bridge-wayfinder
-version: 1.2.0
+version: 1.4.0
 sdk-version: 3.4.8
 
 source: src
@@ -8,6 +8,6 @@ dependencies:
   - daml-stdlib
 
 data-dependencies:
-  - ../common/.daml/dist/common-1.2.0.dar
-  - ../cip56-token/.daml/dist/cip56-token-1.2.0.dar
-  - ../bridge-core/.daml/dist/bridge-core-1.2.0.dar
+  - ../common/.daml/dist/common-1.4.0.dar
+  - ../cip56-token/.daml/dist/cip56-token-1.4.0.dar
+  - ../bridge-core/.daml/dist/bridge-core-1.4.0.dar

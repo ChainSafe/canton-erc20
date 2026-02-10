@@ -1,0 +1,133 @@
+-- | Unified Token Configuration
+--
+-- This module provides a single TokenConfig template that handles
+-- mint, burn, and metadata management for ANY token (native or bridged).
+-- Bridge-specific logic (deposit validation, withdrawal initiation) remains
+-- in the bridge config (e.g. WayfinderBridgeConfig), which holds a
+-- tokenConfigCid reference and delegates all mint/burn to TokenConfig.
+--
+-- To add a new token, create a new TokenConfig instance with its own
+-- CIP56Manager and metadata. If the token is EVM-bridged, create a
+-- bridge config pointing at that TokenConfig. The core mint/burn/event
+-- logic is identical for every token.
+
+module CIP56.Config where
+
+import Common.Types (ExtendedMetadata)
+import CIP56.Token
+import CIP56.Events
+
+-- =============================================================================
+-- UNIFIED TOKEN CONFIG
+-- =============================================================================
+
+-- | Configuration for any CIP-56 token (native or bridged)
+--
+-- Holds the CIP56Manager reference and metadata. All mint/burn
+-- operations go through this template to produce unified audit events.
+template TokenConfig
+  with
+    issuer : Party
+    tokenManagerCid : ContractId CIP56Manager
+    meta : ExtendedMetadata
+    auditObservers : [Party]
+  where
+    signatory issuer
+    observer auditObservers
+
+    -- =========================================================================
+    -- MINT / BURN
+    -- =========================================================================
+
+    -- | Mint tokens to a recipient with audit event
+    --
+    -- For native mints: evmTxHash = None
+    -- For bridge deposits: evmTxHash = Some txHash
+    nonconsuming choice IssuerMint : (ContractId CIP56Holding, ContractId MintEvent)
+      with
+        recipient : Party
+        amount : Decimal
+        eventTime : Time
+        userFingerprint : Text
+        evmTxHash : Optional Text     -- Some for bridge deposits, None for native
+      controller issuer
+      do
+        assertMsg "amount must be positive" (amount > 0.0)
+
+        holdingCid <- exercise tokenManagerCid Mint with
+          to = recipient
+          amount = amount
+
+        eventCid <- create MintEvent with
+          issuer
+          recipient
+          amount
+          holdingCid
+          tokenSymbol = meta.symbol
+          timestamp = eventTime
+          auditObservers = auditObservers
+          userFingerprint
+          evmTxHash
+
+        pure (holdingCid, eventCid)
+
+    -- | Burn tokens with audit event
+    --
+    -- For native burns: evmDestination = None
+    -- For bridge withdrawals: evmDestination = Some address
+    nonconsuming choice IssuerBurn : (Optional (ContractId CIP56Holding), ContractId BurnEvent)
+      with
+        holdingCid : ContractId CIP56Holding
+        amount : Decimal
+        eventTime : Time
+        userFingerprint : Text
+        evmDestination : Optional Text  -- Some for bridge withdrawals, None for native
+      controller issuer
+      do
+        assertMsg "amount must be positive" (amount > 0.0)
+        holding <- fetch holdingCid
+
+        remainderCid <- exercise tokenManagerCid Burn with holdingCid, amount
+
+        eventCid <- create BurnEvent with
+          issuer
+          burnedFrom = holding.owner
+          amount
+          remainderCid
+          tokenSymbol = meta.symbol
+          timestamp = eventTime
+          auditObservers = auditObservers
+          userFingerprint
+          evmDestination
+
+        pure (remainderCid, eventCid)
+
+    -- =========================================================================
+    -- METADATA
+    -- =========================================================================
+
+    nonconsuming choice GetMetadata : ExtendedMetadata
+      controller issuer
+      do pure meta
+
+    choice SetMetadata : ContractId TokenConfig
+      with
+        newMeta : ExtendedMetadata
+      controller issuer
+      do create this with meta = newMeta
+
+    -- =========================================================================
+    -- AUDIT OBSERVER MANAGEMENT
+    -- =========================================================================
+
+    choice AddAuditObserver : ContractId TokenConfig
+      with
+        newObserver : Party
+      controller issuer
+      do create this with auditObservers = newObserver :: auditObservers
+
+    choice RemoveAuditObserver : ContractId TokenConfig
+      with
+        observerToRemove : Party
+      controller issuer
+      do create this with auditObservers = filter (/= observerToRemove) auditObservers

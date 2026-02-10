@@ -22,9 +22,6 @@ This directory contains documentation for the DAML smart contracts used in the C
 |----------|-------------|
 | [sow/BRIDGE_IMPLEMENTATION_PLAN.md](./sow/BRIDGE_IMPLEMENTATION_PLAN.md) | High-level bridge architecture |
 | [sow/canton-integration.md](./sow/canton-integration.md) | Canton Network / gRPC API integration |
-| [sow/usdc.md](./sow/usdc.md) | USDC bridging requirements |
-| [sow/cbtc.md](./sow/cbtc.md) | cBTC bridging requirements |
-| [sow/evm.md](./sow/evm.md) | Generic ERC20 bridging |
 
 ### Development
 
@@ -52,12 +49,13 @@ cd ../bridge-wayfinder && daml build
 ### Run Tests
 
 ```bash
-# Wayfinder bridge test
-cd daml/bridge-wayfinder-tests
-daml script \
-  --dar .daml/dist/bridge-wayfinder-tests-1.1.0.dar \
-  --script-name Wayfinder.Test:testWayfinderBridge \
-  --ide-ledger
+# Run all tests
+./scripts/test-all.sh --verbose
+
+# Or individual packages
+cd daml/cip56-token-tests && daml test
+cd daml/bridge-core-tests && daml test
+cd daml/bridge-wayfinder-tests && daml test
 ```
 
 ---
@@ -67,14 +65,9 @@ daml script \
 ```
 daml/
 ├── common/              # Shared types (TokenMeta, EvmAddress, FingerprintAuth)
-├── cip56-token/         # CIP-56 token standard
-├── bridge-core/         # Core bridge contracts
-├── bridge-wayfinder/    # Wayfinder PROMPT bridge [PRODUCTION]
-├── bridge-usdc/         # USDC bridge [WIP]
-├── bridge-cbtc/         # cBTC bridge [WIP]
-├── bridge-generic/      # Generic ERC20 [WIP]
-├── native-token/        # Native Canton tokens (DEMO)
-├── dvp/                 # Delivery vs Payment
+├── cip56-token/         # CIP-56 token standard + unified TokenConfig + Events
+├── bridge-core/         # Core bridge contracts (MintCommand, WithdrawalRequest)
+├── bridge-wayfinder/    # Wayfinder PROMPT bridge
 └── *-tests/             # Test packages (with daml-script)
 ```
 
@@ -99,6 +92,16 @@ All tokens implement the Canton Improvement Proposal 56 standard:
 - Multi-step authorization
 - Compliance hooks
 - Receiver authorization
+
+### Unified Token Architecture
+
+All tokens (native or bridged) use the same core templates:
+
+- **`TokenConfig`** (in `CIP56.Config`) -- holds a `CIP56Manager` reference and token metadata. Provides `IssuerMint` and `IssuerBurn` choices that produce unified `MintEvent`/`BurnEvent` audit trails. Optional fields (`evmTxHash`, `evmDestination`) distinguish native operations from bridge operations.
+- **`MintEvent`/`BurnEvent`** (in `CIP56.Events`) -- unified audit events for all token operations.
+- **`WayfinderBridgeConfig`** -- a thin EVM bridge layer. It holds a `tokenConfigCid` reference and delegates all minting and burning to `TokenConfig`. The bridge only handles EVM-specific concerns (fingerprint registration, deposit validation, withdrawal initiation).
+
+To add a new bridged token, create a new `TokenConfig` instance with its own `CIP56Manager` and metadata, then create a bridge config module that holds a reference to that `TokenConfig`. The core mint/burn/event logic is shared and identical for every token.
 
 ---
 

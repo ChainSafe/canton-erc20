@@ -1,9 +1,9 @@
--- | Wayfinder Bridge Tests - Issuer-Centric Model
+-- | Wayfinder Bridge Tests - Unified Token Architecture
 --
--- Tests demonstrating the issuer-centric bridge flow where:
--- - Issuer controls all party allocations and operations
--- - End users do NOT manage Canton keys
--- - Fingerprint resolution is issuer-controlled
+-- Tests demonstrating the bridge flow where:
+-- - WayfinderBridgeConfig delegates mint/burn to TokenConfig
+-- - Unified events (CIP56.Events) are used for all operations
+-- - Bridge is a thin EVM layer on top of unified token management
 
 module Wayfinder.Test where
 
@@ -12,22 +12,15 @@ import DA.Time (time)
 import DA.Date (date, Month(..))
 import Common.Types
 import CIP56.Token
+import CIP56.Config (TokenConfig(..))
 import Bridge.Contracts
-import Bridge.Events
 import Wayfinder.Bridge
 
 -- =============================================================================
--- ISSUER-CENTRIC FULL FLOW TEST
+-- FULL FLOW TEST
 -- =============================================================================
 
--- | Complete end-to-end test of issuer-centric bridge with audit events
---
--- Flow:
--- 1. Issuer deploys bridge
--- 2. Issuer allocates parties for users (simulated)
--- 3. Issuer registers fingerprint mappings
--- 4. User deposits on EVM → Issuer processes and mints (with audit event)
--- 5. Issuer initiates withdrawal → Creates events for EVM
+-- | Complete end-to-end test of bridge with unified token config
 testIssuerCentricBridge : Script ()
 testIssuerCentricBridge = script do
   -- ===========================================================================
@@ -35,12 +28,8 @@ testIssuerCentricBridge = script do
   -- ===========================================================================
   debug ">>> 1. Issuer deploys bridge..."
   
-  -- Issuer is the participant node operator
   issuer <- allocateParty "BridgeIssuer"
   auditor <- allocateParty "Auditor"
-  
-  -- Issuer allocates parties for users
-  -- In reality: issuer.partyManagement.allocateParty("Alice") → "Alice::1220abc..."
   alice <- allocateParty "Alice"
   bob <- allocateParty "Bob"
   
@@ -50,32 +39,37 @@ testIssuerCentricBridge = script do
       issuer = issuer
       meta = promptMetadata
   
-  -- Deploy bridge config with audit observer
+  -- Deploy unified TokenConfig for PROMPT
+  tokenConfigCid <- submit issuer do
+    createCmd TokenConfig with
+      issuer = issuer
+      tokenManagerCid = tokenManagerCid
+      meta = promptMetadata
+      auditObservers = [auditor]
+
+  -- Deploy bridge config (delegates to TokenConfig)
   configCid <- submit issuer do
     createCmd WayfinderBridgeConfig with
       issuer = issuer
-      tokenManagerCid = tokenManagerCid
+      tokenConfigCid = tokenConfigCid
       auditObservers = [auditor]
   
-  debug "    [OK] Bridge deployed."
+  debug "    [OK] Bridge deployed with unified TokenConfig."
   
   -- ===========================================================================
   -- 2. ISSUER REGISTERS USER FINGERPRINTS
   -- ===========================================================================
   debug ">>> 2. Issuer registers fingerprints for Alice and Bob..."
   
-  -- When AllocateParty returns party ID, issuer extracts fingerprint
   let aliceFingerprint = "1220aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   let bobFingerprint   = "1220bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
   
-  -- Register Alice
   aliceMappingCid <- submit issuer do
     exerciseCmd configCid RegisterUser with
       userParty = alice
       fingerprint = aliceFingerprint
       evmAddress = Some (EvmAddress "0xAliceEthWallet...")
   
-  -- Register Bob
   bobMappingCid <- submit issuer do
     exerciseCmd configCid RegisterUser with
       userParty = bob
@@ -89,11 +83,8 @@ testIssuerCentricBridge = script do
   -- ===========================================================================
   debug ">>> 3. Alice deposits 100.0 PROMPT from Ethereum..."
   
-  -- Simulate: Middleware sees DepositToCanton event on EVM
-  -- bridge.depositToCanton(token, 100e18, bytes32(aliceFingerprint))
   let testTime = time (date 2025 Jan 1) 12 0 0
   
-  -- Middleware creates PendingDeposit
   aliceDepositCid <- submit issuer do
     exerciseCmd configCid CreatePendingDeposit with
       fingerprint = aliceFingerprint
@@ -101,7 +92,7 @@ testIssuerCentricBridge = script do
       evmTxHash = "0xAliceDepositTx..."
       timestamp = testTime
   
-  -- Issuer processes deposit and mints tokens (now returns audit event)
+  -- Process deposit (delegates mint to TokenConfig)
   (aliceHoldingCid, mintEventCid) <- submit issuer do
     exerciseCmd configCid ProcessDepositAndMint with
       depositCid = aliceDepositCid
@@ -112,18 +103,19 @@ testIssuerCentricBridge = script do
   Some aliceHolding <- queryContractId alice aliceHoldingCid
   assertMsg "Alice should have 100.0 PROMPT" (aliceHolding.amount == 100.0)
   
-  -- Verify mint audit event was created
+  -- Verify unified mint event (with evmTxHash set)
   Some mintEvent <- queryContractId issuer mintEventCid
   assertMsg "Mint event amount correct" (mintEvent.amount == 100.0)
   assertMsg "Mint event recipient correct" (mintEvent.recipient == alice)
-  assertMsg "Mint event fingerprint correct" (mintEvent.fingerprint == aliceFingerprint)
+  assertMsg "Mint event userFingerprint correct" (mintEvent.userFingerprint == aliceFingerprint)
   assertMsg "Mint event tokenSymbol correct" (mintEvent.tokenSymbol == "PROMPT")
+  assertMsg "Mint event evmTxHash set (bridge deposit)" (mintEvent.evmTxHash == Some "0xAliceDepositTx...")
   
   -- Verify auditor can see the event
   Some mintEventFromAuditor <- queryContractId auditor mintEventCid
   assertMsg "Auditor can see mint event" (mintEventFromAuditor.amount == 100.0)
   
-  debug "    [OK] Alice received 100.0 PROMPT with audit event."
+  debug "    [OK] Alice received 100.0 PROMPT with unified audit event."
   
   -- ===========================================================================
   -- 4. DIRECT MINT WITH AUDIT EVENT
@@ -143,18 +135,19 @@ testIssuerCentricBridge = script do
   Some bobHolding <- queryContractId bob bobHoldingCid
   assertMsg "Bob should have 40.0 PROMPT" (bobHolding.amount == 40.0)
   
-  -- Verify Bob's mint event
+  -- Verify Bob's mint event (unified, with evmTxHash)
   Some bobMintEvent <- queryContractId issuer bobMintEventCid
   assertMsg "Bob mint event amount correct" (bobMintEvent.amount == 40.0)
+  assertMsg "Bob mint event evmTxHash set" (bobMintEvent.evmTxHash == Some "admin-mint")
   
-  debug "    [OK] Bob has 40.0 PROMPT with audit event."
+  debug "    [OK] Bob has 40.0 PROMPT with unified audit event."
   
   -- ===========================================================================
   -- 5. WITHDRAWAL FLOW (Canton → EVM) WITH AUDIT EVENT
   -- ===========================================================================
   debug ">>> 5. Bob requests withdrawal of 40.0 PROMPT to Ethereum..."
   
-  -- Issuer initiates withdrawal on behalf of Bob
+  -- Issuer initiates withdrawal
   withdrawalRequestCid <- submit issuer do
     exerciseCmd configCid InitiateWithdrawal with
       mappingCid = bobMappingCid
@@ -162,7 +155,7 @@ testIssuerCentricBridge = script do
       amount = 40.0
       evmDestination = EvmAddress "0xBobEthWallet..."
   
-  -- Issuer processes the withdrawal
+  -- Issuer processes the withdrawal (burn delegated to TokenConfig)
   let withdrawalTime = time (date 2025 Jan 1) 16 0 0
   (withdrawalEventCid, burnEventCid) <- submit issuer do
     exerciseCmd withdrawalRequestCid ProcessWithdrawal with
@@ -174,17 +167,18 @@ testIssuerCentricBridge = script do
   assertMsg "Withdrawal fingerprint preserved" (withdrawalEvent.fingerprint == bobFingerprint)
   assertMsg "Withdrawal tokenSymbol correct" (withdrawalEvent.tokenSymbol == "PROMPT")
   
-  -- Verify burn audit event
+  -- Verify unified burn event (with evmDestination set)
   Some burnEvent <- queryContractId issuer burnEventCid
   assertMsg "Burn event amount correct" (burnEvent.amount == 40.0)
   assertMsg "Burn event burnedFrom correct" (burnEvent.burnedFrom == bob)
-  assertMsg "Burn event fingerprint correct" (burnEvent.fingerprint == bobFingerprint)
+  assertMsg "Burn event userFingerprint correct" (burnEvent.userFingerprint == bobFingerprint)
+  assertMsg "Burn event evmDestination set (bridge withdrawal)" (burnEvent.evmDestination == Some "0xBobEthWallet...")
   
   -- Verify auditor can see burn event
   Some burnEventFromAuditor <- queryContractId auditor burnEventCid
   assertMsg "Auditor can see burn event" (burnEventFromAuditor.amount == 40.0)
   
-  debug "    [OK] Withdrawal event created with burn audit event."
+  debug "    [OK] Withdrawal event created with unified burn audit event."
   
   -- ===========================================================================
   -- 6. COMPLETE WITHDRAWAL (After EVM Release)
@@ -201,7 +195,7 @@ testIssuerCentricBridge = script do
     _ -> fail "Expected Completed status"
   
   debug "    [OK] Withdrawal marked complete."
-  debug ">>> Issuer-Centric Bridge Test with Audit Events Complete!"
+  debug ">>> Bridge Test with Unified Token Architecture Complete!"
   
   pure ()
 
@@ -221,12 +215,19 @@ testAuditObserverManagement = script do
     createCmd CIP56Manager with
       issuer = issuer
       meta = promptMetadata
+
+  tokenConfigCid <- submit issuer do
+    createCmd TokenConfig with
+      issuer = issuer
+      tokenManagerCid = tokenManagerCid
+      meta = promptMetadata
+      auditObservers = []
   
   -- Start with auditor1
   configCid <- submit issuer do
     createCmd WayfinderBridgeConfig with
       issuer = issuer
-      tokenManagerCid = tokenManagerCid
+      tokenConfigCid = tokenConfigCid
       auditObservers = [auditor1]
   
   -- Add auditor2
@@ -267,11 +268,18 @@ testFingerprintMismatchRejected = script do
     createCmd CIP56Manager with
       issuer = issuer
       meta = promptMetadata
+
+  tokenConfigCid <- submit issuer do
+    createCmd TokenConfig with
+      issuer = issuer
+      tokenManagerCid = tokenManagerCid
+      meta = promptMetadata
+      auditObservers = []
   
   configCid <- submit issuer do
     createCmd WayfinderBridgeConfig with
       issuer = issuer
-      tokenManagerCid = tokenManagerCid
+      tokenConfigCid = tokenConfigCid
       auditObservers = []
   
   -- Register Alice with one fingerprint
@@ -297,7 +305,7 @@ testFingerprintMismatchRejected = script do
   submitMustFail issuer do
     exerciseCmd configCid ProcessDepositAndMint with
       depositCid = depositCid
-      mappingCid = aliceMappingCid  -- Wrong mapping!
+      mappingCid = aliceMappingCid
       timestamp = testTime
   
   debug "    [OK] Fingerprint mismatch correctly rejected."
@@ -309,7 +317,7 @@ testFingerprintMismatchRejected = script do
 
 testMultipleUsers : Script ()
 testMultipleUsers = script do
-  debug ">>> Testing multiple users with audit events..."
+  debug ">>> Testing multiple users with unified audit events..."
   
   issuer <- allocateParty "BridgeIssuer"
   alice <- allocateParty "Alice"
@@ -321,11 +329,18 @@ testMultipleUsers = script do
     createCmd CIP56Manager with
       issuer = issuer
       meta = promptMetadata
+
+  tokenConfigCid <- submit issuer do
+    createCmd TokenConfig with
+      issuer = issuer
+      tokenManagerCid = tokenManagerCid
+      meta = promptMetadata
+      auditObservers = [auditor]
   
   configCid <- submit issuer do
     createCmd WayfinderBridgeConfig with
       issuer = issuer
-      tokenManagerCid = tokenManagerCid
+      tokenConfigCid = tokenConfigCid
       auditObservers = [auditor]
   
   -- Register all users
@@ -414,5 +429,5 @@ testMultipleUsers = script do
   assertMsg "Auditor sees Bob event" (bmFromAuditor.amount == 200.0)
   assertMsg "Auditor sees Carol event" (cmFromAuditor.amount == 300.0)
   
-  debug "    [OK] All users received correct amounts with audit events."
+  debug "    [OK] All users received correct amounts with unified audit events."
   pure ()

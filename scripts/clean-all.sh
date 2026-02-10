@@ -54,11 +54,11 @@ log() {
 }
 
 success() {
-  echo -e "${GREEN}✓${NC} $*"
+  echo -e "${GREEN}[OK]${NC} $*"
 }
 
 warn() {
-  echo -e "${YELLOW}⚠${NC} $*"
+  echo -e "${YELLOW}[WARN]${NC} $*"
 }
 
 # Clean a single package
@@ -103,32 +103,28 @@ else
 fi
 echo ""
 
-# All packages
-PACKAGES=(
+# Source packages
+SOURCE_PACKAGES=(
   "common"
   "cip56-token"
   "bridge-core"
   "bridge-wayfinder"
-  "bridge-usdc"
-  "bridge-cbtc"
-  "bridge-generic"
-  "dvp"
+)
+
+# Test packages
+TEST_PACKAGES=(
+  "common-tests"
+  "cip56-token-tests"
+  "bridge-core-tests"
+  "bridge-wayfinder-tests"
   "integration-tests"
 )
+
+PACKAGES=("${SOURCE_PACKAGES[@]}" "${TEST_PACKAGES[@]}")
 
 for pkg in "${PACKAGES[@]}"; do
   clean_package "$pkg"
 done
-
-# Also clean the old ERC20 package if it exists
-if [[ -d "${DAML_DIR}/ERC20" ]]; then
-  log "Cleaning legacy ERC20 package..."
-  cd "${DAML_DIR}/ERC20"
-  daml clean 2>/dev/null || true
-  if [[ "${DEEP_CLEAN}" == "true" && -d ".daml" ]]; then
-    rm -rf .daml
-  fi
-fi
 
 # Clean root daml directory artifacts
 cd "${DAML_DIR}"
