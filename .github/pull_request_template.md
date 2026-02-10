@@ -6,12 +6,12 @@
 ## Type of Change
 <!-- Mark the relevant option with an "x" -->
 
-- [ ] 🐛 Bug fix (non-breaking change that fixes an issue)
-- [ ] ✨ New feature (non-breaking change that adds functionality)
-- [ ] 💥 Breaking change (fix or feature that would cause existing functionality to change)
-- [ ] 📚 Documentation update
-- [ ] 🔧 Configuration change
-- [ ] 🧪 Test update
+- [ ] Bug fix (non-breaking change that fixes an issue)
+- [ ] New feature (non-breaking change that adds functionality)
+- [ ] Breaking change (fix or feature that would cause existing functionality to change)
+- [ ] Documentation update
+- [ ] Configuration change
+- [ ] Test update
 
 ## Related Issues
 <!-- Link to related issues: Fixes #123, Relates to #456 -->
@@ -23,10 +23,6 @@
 - [ ] `cip56-token`
 - [ ] `bridge-core`
 - [ ] `bridge-wayfinder`
-- [ ] `bridge-usdc`
-- [ ] `bridge-cbtc`
-- [ ] `bridge-generic`
-- [ ] `dvp`
 - [ ] `integration-tests`
 
 ## Checklist
@@ -56,4 +52,3 @@
 
 ## Additional Notes
 <!-- Any additional information that reviewers should know -->
-

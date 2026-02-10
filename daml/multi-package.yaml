@@ -4,39 +4,23 @@
 # Dependency Graph:
 #   common (no deps)
 #     └── cip56-token
-#           ├── bridge-core
-#           │     ├── bridge-wayfinder  - PRODUCTION READY
-#           │     ├── bridge-usdc       - In Development
-#           │     ├── bridge-cbtc       - In Development
-#           │     └── bridge-generic    - In Development
-#           └── native-token            - Native Canton token issuance
-#     └── dvp
+#           └── bridge-core
+#                 └── bridge-wayfinder  - Wayfinder PROMPT bridge
 #
 # Test packages (with daml-script) depend on production packages
-# integration-tests depends on all packages
 
 packages:
-  # === Core Infrastructure (Production) ===
+  # === Core Infrastructure ===
   - ./common
   - ./cip56-token
   - ./bridge-core
   
-  # === Client-Specific Bridges (Production) ===
-  - ./bridge-wayfinder    # Wayfinder PRIME token - PRODUCTION READY
-  - ./bridge-usdc         # Circle USDC - In Development
-  - ./bridge-cbtc         # BitSafe cBTC - In Development
-  - ./bridge-generic      # Generic ERC20 - In Development
-  
-  # === Native Token (Production) ===
-  - ./native-token        # Native Canton token issuance with audit trail
-  
-  # === Additional Modules (Production) ===
-  - ./dvp
+  # === Bridge ===
+  - ./bridge-wayfinder    # Wayfinder PROMPT token bridge
   
   # === Test Packages (with daml-script) ===
   - ./common-tests
   - ./cip56-token-tests
   - ./bridge-core-tests
   - ./bridge-wayfinder-tests
-  - ./native-token-tests
   - ./integration-tests

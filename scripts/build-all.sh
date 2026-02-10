@@ -67,15 +67,15 @@ log() {
 }
 
 success() {
-  echo -e "${GREEN}✓${NC} $*"
+  echo -e "${GREEN}[OK]${NC} $*"
 }
 
 error() {
-  echo -e "${RED}✗${NC} $*"
+  echo -e "${RED}[FAIL]${NC} $*"
 }
 
 warn() {
-  echo -e "${YELLOW}⚠${NC} $*"
+  echo -e "${YELLOW}[WARN]${NC} $*"
 }
 
 # Build a single package
@@ -129,22 +129,27 @@ build_package() {
 log "Building all DAML packages in dependency order..."
 echo ""
 
-# Package build order (respects dependencies)
-PACKAGES=(
+# Source packages (build order respects dependencies)
+SOURCE_PACKAGES=(
   "common"
   "cip56-token"
   "bridge-core"
   "bridge-wayfinder"
-  "bridge-usdc"
-  "bridge-cbtc"
-  "bridge-generic"
-  "dvp"
+)
+
+# Test packages (depend on source packages)
+TEST_PACKAGES=(
+  "common-tests"
+  "cip56-token-tests"
+  "bridge-core-tests"
+  "bridge-wayfinder-tests"
   "integration-tests"
 )
 
+PACKAGES=("${SOURCE_PACKAGES[@]}" "${TEST_PACKAGES[@]}")
+
 FAILED_PACKAGES=()
 BUILT_COUNT=0
-SKIPPED_COUNT=0
 
 for pkg in "${PACKAGES[@]}"; do
   if build_package "$pkg"; then
@@ -175,13 +180,14 @@ if [[ ${#FAILED_PACKAGES[@]} -gt 0 ]]; then
 else
   success "All DAML packages built successfully!"
   echo ""
-  echo "DARs created in:"
+  echo "DARs created:"
   for pkg in "${PACKAGES[@]}"; do
-    dar_path="${DAML_DIR}/${pkg}/.daml/dist/${pkg}-1.0.0.dar"
-    if [[ -f "$dar_path" ]]; then
-      size=$(du -h "$dar_path" | cut -f1)
-      echo "  - ${pkg}/.daml/dist/${pkg}-1.0.0.dar (${size})"
-    fi
+    for dar in "${DAML_DIR}/${pkg}/.daml/dist/"*.dar; do
+      if [[ -f "$dar" ]]; then
+        size=$(du -h "$dar" | cut -f1)
+        echo "  - ${pkg}/.daml/dist/$(basename "$dar") (${size})"
+      fi
+    done
   done
   echo ""
 fi

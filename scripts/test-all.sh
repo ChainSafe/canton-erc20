@@ -5,7 +5,7 @@ set -euo pipefail
 # =============================================================================
 # Test All Packages (DAML + Solidity)
 # =============================================================================
-# This script runs tests for all DAML packages and optionally Solidity.
+# This script runs tests for all DAML test packages and optionally Solidity.
 #
 # Usage:
 #   ./scripts/test-all.sh [--verbose] [--package PACKAGE_NAME] [--solidity] [--daml-only]
@@ -72,15 +72,15 @@ log() {
 }
 
 success() {
-  echo -e "${GREEN}✓${NC} $*"
+  echo -e "${GREEN}[OK]${NC} $*"
 }
 
 error() {
-  echo -e "${RED}✗${NC} $*"
+  echo -e "${RED}[FAIL]${NC} $*"
 }
 
 warn() {
-  echo -e "${YELLOW}⚠${NC} $*"
+  echo -e "${YELLOW}[WARN]${NC} $*"
 }
 
 # Test a single package
@@ -101,12 +101,6 @@ test_package() {
   log "Testing ${pkg_name}..."
 
   cd "${pkg_dir}"
-
-  # Check if package has test files
-  if ! find . -name "*.daml" -type f -exec grep -l "^test" {} \; | grep -q .; then
-    warn "${pkg_name} has no tests (skipping)"
-    return 2
-  fi
 
   # Build test command
   local test_cmd="daml test"
@@ -153,19 +147,15 @@ if [[ -n "${SPECIFIC_PACKAGE}" ]]; then
   fi
 fi
 
-log "Running tests for all DAML packages..."
+log "Running tests for all DAML test packages..."
 echo ""
 
-# Package test order (same as build order)
+# Test packages (these contain daml-script test scripts)
 PACKAGES=(
-  "common"
-  "cip56-token"
-  "bridge-core"
-  "bridge-usdc"
-  "bridge-cbtc"
-  "bridge-generic"
-  "dvp"
-  "integration-tests"
+  "common-tests"
+  "cip56-token-tests"
+  "bridge-core-tests"
+  "bridge-wayfinder-tests"
 )
 
 FAILED_PACKAGES=()
@@ -208,12 +198,6 @@ if [[ ${#FAILED_PACKAGES[@]} -gt 0 ]]; then
 else
   if [[ ${PASSED_COUNT} -eq 0 ]]; then
     warn "No DAML tests were run. Consider adding test scripts to your packages."
-    echo ""
-    echo "To add tests, create scripts in your DAML files:"
-    echo ""
-    echo "  test myTest : Script ()"
-    echo "  test myTest = script do"
-    echo "    -- your test code"
     echo ""
   else
     success "All DAML tests passed!"

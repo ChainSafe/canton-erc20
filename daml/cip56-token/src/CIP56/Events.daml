@@ -1,0 +1,58 @@
+-- | Unified Token Events
+--
+-- This module contains audit event templates for ALL token operations,
+-- both native and bridged. Events carry optional bridge metadata fields
+-- that are set for bridge operations (deposits/withdrawals) and None
+-- for native mints/burns.
+
+module CIP56.Events where
+
+import CIP56.Token (CIP56Holding)
+
+-- =============================================================================
+-- MINT EVENT
+-- =============================================================================
+
+-- | Audit event for mint operations (native or bridge deposit)
+--
+-- Created when tokens are minted on Canton.
+-- For bridge deposits, evmTxHash is set to the source EVM transaction hash.
+-- For native mints, evmTxHash is None.
+template MintEvent
+  with
+    issuer : Party
+    recipient : Party
+    amount : Decimal
+    holdingCid : ContractId CIP56Holding
+    tokenSymbol : Text
+    timestamp : Time
+    auditObservers : [Party]
+    userFingerprint : Text          -- EVM-derived fingerprint of the user
+    evmTxHash : Optional Text       -- Some for bridge deposits, None for native mints
+  where
+    signatory issuer
+    observer recipient, auditObservers
+
+-- =============================================================================
+-- BURN EVENT
+-- =============================================================================
+
+-- | Audit event for burn operations (native or bridge withdrawal)
+--
+-- Created when tokens are burned on Canton.
+-- For bridge withdrawals, evmDestination is set to the EVM destination address.
+-- For native burns, evmDestination is None.
+template BurnEvent
+  with
+    issuer : Party
+    burnedFrom : Party
+    amount : Decimal
+    remainderCid : Optional (ContractId CIP56Holding)
+    tokenSymbol : Text
+    timestamp : Time
+    auditObservers : [Party]
+    userFingerprint : Text          -- EVM-derived fingerprint of the user
+    evmDestination : Optional Text  -- Some for bridge withdrawals, None for native burns
+  where
+    signatory issuer
+    observer burnedFrom, auditObservers

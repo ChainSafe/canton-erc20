@@ -3,17 +3,7 @@ module CIP56.Token where
 import Common.Types
 import CIP56.Compliance
 
--- Forward declaration to break cycle (Lock choice needs LockedAsset)
--- But circular imports are tricky. 
--- Better approach: Move LockedAsset to separate module and avoid circular dependency
--- OR define LockedAsset here if small.
--- LockedAsset needs `CIP56Holding` to unlock.
--- CIP56Holding needs `LockedAsset` to lock.
--- This is a cycle.
--- Standard Daml solution: Put them in same module or use a "Factory" pattern.
--- Let's put LockedAsset in this module for simplicity of Phase 1.
-
--- Locked asset representing funds in transit (Moved from Transfer.daml to avoid cycle)
+-- Locked asset representing funds in transit
 template LockedAsset
   with
     issuer : Party
@@ -128,10 +118,16 @@ template CIP56Holding
     observer  owner
 
     -- Direct Transfer (Atomic)
+    --
+    -- Transfers `value` tokens from this holding to `to`.
+    -- If `existingRecipientHolding` is provided, the recipient's old holding
+    -- is archived and merged into the new one, preventing fragmentation.
+    -- Invariant: each user should have exactly one holding per token.
     choice Transfer : (ContractId CIP56Holding, Optional (ContractId CIP56Holding))
       with
         to    : Party
         value : Decimal
+        existingRecipientHolding : Optional (ContractId CIP56Holding)
         complianceRulesCid : Optional (ContractId ComplianceRules)
         complianceProofCid : Optional (ContractId ComplianceProof)
       controller owner
@@ -156,10 +152,20 @@ template CIP56Holding
             
           None -> pure ()
 
+        -- Determine recipient amount: transferred value + existing holding (if any)
+        recipientAmount <- case existingRecipientHolding of
+          Some existingCid -> do
+            existing <- fetch existingCid
+            assertMsg "existing holding: same issuer" (existing.issuer == issuer)
+            assertMsg "existing holding: same owner" (existing.owner == to)
+            archive existingCid
+            pure (existing.amount + value)
+          None -> pure value
+
         recipientCid <- create CIP56Holding with
           issuer = issuer
           owner  = to
-          amount = value
+          amount = recipientAmount
           meta   = meta
 
         changeCid <- if amount > value

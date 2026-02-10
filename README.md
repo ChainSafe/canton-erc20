@@ -7,51 +7,38 @@
 
 This repository contains the Daml implementation of a token bridge connecting ERC-20 tokens on Ethereum with CIP-56 compliant tokens on Canton Network. The Go middleware implementation is maintained in the parent [canton-middleware](https://github.com/ChainSafe/canton-middleware) repository.
 
-## Production Status
-
-| Bridge | Token | Status | Network |
-|--------|-------|--------|---------|
-| **Wayfinder** | PROMPT | **Production Ready** | 5North DevNet / Mainnet |
-| USDC | USDC | In Development | — |
-| cBTC | cBTC | In Development | — |
-| Generic | Any ERC20 | In Development | — |
-
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        CANTON NETWORK                           │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐         │
-│  │   common    │───>│ cip56-token │───>│ bridge-core │         │
-│  │   (types)   │    │  (standard) │    │ (contracts) │         │
-│  └─────────────┘    └─────────────┘    └──────┬──────┘         │
-│                                               │                 │
-│         ┌─────────────────────────────────────┼─────────────┐  │
-│         │                    │                │             │  │
-│         ▼                    ▼                ▼             ▼  │
-│  ┌─────────────┐    ┌─────────────┐   ┌─────────────┐  ┌─────┐│
-│  │  wayfinder  │    │    usdc     │   │    cbtc     │  │ ... ││
-│  │  (PROMPT)   │    │  (Circle)   │   │  (BitSafe)  │  │     ││
-│  │ [PRODUCTION]│    │   [WIP]     │   │    [WIP]    │  │     ││
-│  └─────────────┘    └─────────────┘   └─────────────┘  └─────┘│
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      GO MIDDLEWARE                              │
-│              (Event Streaming + Command Submission)             │
-│                    canton-middleware repo                       │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                        ETHEREUM                                 │
-│                   (ERC-20 + Bridge Contracts)                   │
-│                ethereum-wayfinder submodule                     │
-└─────────────────────────────────────────────────────────────────┘
+                         CANTON NETWORK
++---------------------------------------------------------------+
+|                                                                 |
+|  +-----------+    +------------+    +------------+              |
+|  |  common   |--->| cip56-token|--->| bridge-core|              |
+|  |  (types)  |    | (standard) |    | (contracts)|              |
+|  +-----------+    +------------+    +------+-----+              |
+|                                           |                     |
+|                                           v                     |
+|                                    +--------------+             |
+|                                    |  wayfinder   |             |
+|                                    |  (PROMPT)    |             |
+|                                    +--------------+             |
+|                                                                 |
++-----------------------------------------------------------------+
+                              |
+                              v
++-----------------------------------------------------------------+
+|                      GO MIDDLEWARE                               |
+|              (Event Streaming + Command Submission)              |
+|                    canton-middleware repo                        |
++-----------------------------------------------------------------+
+                              |
+                              v
++-----------------------------------------------------------------+
+|                        ETHEREUM                                 |
+|                   (ERC-20 + Bridge Contracts)                   |
+|                ethereum-wayfinder submodule                     |
++-----------------------------------------------------------------+
 ```
 
 ## Repository Structure
@@ -61,31 +48,25 @@ canton-erc20/
 ├── daml/                               # Daml packages
 │   ├── multi-package.yaml              # Workspace configuration
 │   │
-│   │   # === Core Infrastructure (Production) ===
+│   │   # === Core Infrastructure ===
 │   ├── common/                         # Shared types and utilities
-│   ├── cip56-token/                    # CIP-56 token standard
-│   ├── bridge-core/                    # Core bridge contracts
+│   ├── cip56-token/                    # CIP-56 token standard + unified TokenConfig + Events
+│   ├── bridge-core/                    # Core bridge contracts (MintCommand, WithdrawalRequest)
 │   │
-│   │   # === Client-Specific Bridges (Production) ===
-│   ├── bridge-wayfinder/               # Wayfinder PROMPT (Production)
-│   ├── bridge-usdc/                    # USDC (In Development)
-│   ├── bridge-cbtc/                    # cBTC (In Development)
-│   ├── bridge-generic/                 # Generic ERC20 (In Development)
-│   │
-│   │   # === Additional Modules (Production) ===
-│   ├── dvp/                            # Delivery vs Payment
+│   │   # === Bridge ===
+│   ├── bridge-wayfinder/               # Wayfinder PROMPT token bridge
 │   │
 │   │   # === Test Packages (with daml-script) ===
 │   ├── common-tests/                   # Tests for common
-│   ├── cip56-token-tests/              # Tests for cip56-token
+│   ├── cip56-token-tests/              # Tests for CIP-56 token + TokenConfig
 │   ├── bridge-core-tests/              # Tests for bridge-core
 │   ├── bridge-wayfinder-tests/         # Tests for bridge-wayfinder
-│   └── integration-tests/              # End-to-end tests
+│   └── integration-tests/              # Cross-package integration
 │
 ├── ethereum/                           # EVM Bridge (Solidity)
 │   ├── contracts/                      # Solidity smart contracts
 │   │   ├── CantonBridge.sol            # Main bridge contract
-│   │   └── TokenRegistry.sol           # Token registration
+│   │   └── TokenRegistry.sol          # Token registration
 │   ├── script/                         # Foundry deployment scripts
 │   ├── test/                           # Solidity tests
 │   └── web/                            # Bridge web UI
@@ -129,20 +110,13 @@ cd ../bridge-wayfinder && daml build --no-legacy-assistant-warning
 ### Run Tests
 
 ```bash
-# Run Wayfinder bridge test
-cd daml/bridge-wayfinder-tests
-daml script \
-  --dar .daml/dist/bridge-wayfinder-tests-1.1.0.dar \
-  --script-name Wayfinder.Test:testWayfinderBridge \
-  --ide-ledger
-```
+# Run all DAML tests
+./scripts/test-all.sh --verbose
 
-Expected output:
-```
->>> Deposit flow complete: Alice has 1000.0 tokens
->>> Withdrawal initiated: 500.0 tokens pending release on EVM
->>> Withdrawal completed on EVM
-✓ Bridge flow test completed successfully!
+# Or run individual test packages
+cd daml/cip56-token-tests && daml test
+cd daml/bridge-core-tests && daml test
+cd daml/bridge-wayfinder-tests && daml test
 ```
 
 ## Package Overview
@@ -154,13 +128,9 @@ These packages are deployed to Canton Network and **do not** include `daml-scrip
 | Package | Description | Status |
 |---------|-------------|--------|
 | `common` | Shared types (`TokenMeta`, `EvmAddress`, `ChainRef`, `FingerprintAuth`) | Stable |
-| `cip56-token` | CIP-56 compliant token with privacy-preserving transfers | Stable |
+| `cip56-token` | CIP-56 compliant token, unified `TokenConfig`, unified `MintEvent`/`BurnEvent` | Stable |
 | `bridge-core` | Issuer-centric bridge contracts (`MintCommand`, `WithdrawalRequest`, `WithdrawalEvent`) | Stable |
-| `bridge-wayfinder` | Wayfinder PROMPT token bridge | **Production** |
-| `bridge-usdc` | Circle USDC bridge | Development |
-| `bridge-cbtc` | BitSafe cBTC bridge | Development |
-| `bridge-generic` | Generic ERC20 bridge | Development |
-| `dvp` | Delivery vs Payment settlement | Development |
+| `bridge-wayfinder` | Wayfinder PROMPT token bridge (thin EVM layer delegating to `TokenConfig`) | **Production** |
 
 ### Test Packages
 
@@ -169,52 +139,61 @@ Test packages include `daml-script` and are **not** deployed to production ledge
 | Package | Tests |
 |---------|-------|
 | `common-tests` | `FingerprintAuthTest` |
-| `cip56-token-tests` | Mint, Transfer, Compliance flows |
-| `bridge-core-tests` | Full bridge cycle |
-| `bridge-wayfinder-tests` | E2E Wayfinder flow |
+| `cip56-token-tests` | Mint, Transfer (with merge), Lock, Compliance flows |
+| `bridge-core-tests` | Full bridge cycle, audit events, partial burns |
+| `bridge-wayfinder-tests` | E2E Wayfinder flow, fingerprint validation, observer management |
 | `integration-tests` | Cross-package integration |
 
 ### Package Dependency Graph
 
 ```
 common                         (no dependencies)
-  └── cip56-token             
-        └── bridge-core       
-              ├── bridge-wayfinder   [PRODUCTION]
-              ├── bridge-usdc        [WIP]
-              ├── bridge-cbtc        [WIP]
-              └── bridge-generic     [WIP]
-  └── dvp
+  └── cip56-token
+        └── bridge-core
+              └── bridge-wayfinder
 ```
+
+## Unified Token Architecture
+
+All tokens -- whether native Canton tokens or EVM-bridged -- share the same core logic:
+
+```
+TokenConfig (CIP56.Config)
+├── IssuerMint  --> CIP56Manager.Mint + MintEvent
+└── IssuerBurn  --> CIP56Manager.Burn + BurnEvent
+```
+
+- **`TokenConfig`** holds a `CIP56Manager` reference and token metadata. Every mint produces a `CIP56Holding` and a `MintEvent`; every burn produces a `BurnEvent`. Optional fields (`evmTxHash`, `evmDestination`) distinguish native operations from bridge operations.
+- **`WayfinderBridgeConfig`** is a thin EVM layer. It holds a `tokenConfigCid` reference and delegates all minting and burning to `TokenConfig`. The bridge itself only handles EVM-specific concerns: fingerprint registration, deposit validation, and withdrawal initiation.
+
+To add a new bridged token (e.g. USDC), create:
+1. A new `TokenConfig` instance with its own `CIP56Manager` and metadata
+2. A new bridge config module that holds a reference to that `TokenConfig`
+
+The core mint/burn/event logic is identical for every token. The bridge is just an optional EVM entry point.
 
 ## Testing
 
 ### Test Individual Package
 
 ```bash
-# CIP-56 Token tests
-cd daml/cip56-token-tests
-daml script --dar .daml/dist/cip56-token-tests-1.1.0.dar \
-  --script-name CIP56.Script:test --ide-ledger
+# CIP-56 Token tests (mint, transfer with merge, compliance)
+cd daml/cip56-token-tests && daml test
 
-# Bridge Core tests
-cd daml/bridge-core-tests
-daml script --dar .daml/dist/bridge-core-tests-1.1.0.dar \
-  --script-name Bridge.Script:testBridgeFlow --ide-ledger
+# Bridge Core tests (full bridge cycle, audit events)
+cd daml/bridge-core-tests && daml test
 
-# Wayfinder tests
-cd daml/bridge-wayfinder-tests
-daml script --dar .daml/dist/bridge-wayfinder-tests-1.1.0.dar \
-  --script-name Wayfinder.Test:testWayfinderBridge --ide-ledger
+# Wayfinder tests (E2E deposit/withdrawal flow)
+cd daml/bridge-wayfinder-tests && daml test
 ```
 
 ### Test Coverage
 
-| Package | Test Script | Coverage |
-|---------|-------------|----------|
-| `cip56-token-tests` | `CIP56.Script:test` | Mint, Transfer, Compliance |
-| `bridge-core-tests` | `Bridge.Script:testBridgeFlow` | Full bridge cycle |
-| `bridge-wayfinder-tests` | `Wayfinder.Test:testWayfinderBridge` | E2E Wayfinder flow |
+| Package | Tests | Coverage |
+|---------|-------|----------|
+| `cip56-token-tests` | `test`, `testTransferWithMerge`, `testTransferNoExisting` | Mint, Transfer (with/without merge), Lock, Compliance |
+| `bridge-core-tests` | `testBridgeFlow`, `testAuditObserverVisibility`, `testPartialBurnWithAuditEvent`, `testBasicToken` | Full bridge cycle, audit events, partial burns |
+| `bridge-wayfinder-tests` | `testIssuerCentricBridge`, `testAuditObserverManagement`, `testFingerprintMismatchRejected`, `testMultipleUsers` | E2E flow, observer management, fingerprint validation, multi-user |
 
 ## EVM Bridge
 
@@ -267,4 +246,3 @@ All contracts implement Canton privacy best practices:
 - **Issues**: [GitHub Issues](https://github.com/ChainSafe/canton-erc20/issues)
 
 ---
-

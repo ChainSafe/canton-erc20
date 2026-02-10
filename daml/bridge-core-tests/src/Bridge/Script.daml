@@ -5,8 +5,8 @@ import DA.Time (time)
 import DA.Date (date, Month(..))
 import Common.Types
 import CIP56.Token
+import CIP56.Config
 import Bridge.Contracts
-import Bridge.Events
 
 -- Test bridge flow using issuer-centric model:
 -- EVM deposit → Issuer mints → Issuer initiates withdrawal → EVM release
@@ -14,7 +14,7 @@ import Bridge.Events
 -- In the issuer-centric model:
 -- - ISSUER controls all operations (no user signatures needed)
 -- - Users do NOT manage Canton keys
--- - Issuer mints/burns on behalf of users
+-- - Issuer mints/burns on behalf of users via TokenConfig
 testBridgeFlow : Script ()
 testBridgeFlow = script do
   -- Allocate parties
@@ -35,29 +35,33 @@ testBridgeFlow = script do
     issuer = issuer
     meta = meta
 
+  -- Create unified TokenConfig
+  tokenConfigCid <- submit issuer $ createCmd TokenConfig with
+    issuer = issuer
+    tokenManagerCid = tokenManagerCid
+    meta = meta
+    auditObservers = [auditor]
+
   -- ==========================================================================
   -- DEPOSIT FLOW: EVM → Canton (Issuer-Centric)
   -- ==========================================================================
-  -- 1. User deposits on EVM with their fingerprint
-  -- 2. Middleware detects event, issuer creates MintCommand
-  -- 3. Issuer executes mint directly (no user acceptance needed)
   
   let evmTxHash = "0xabc123def456"
-  let fingerprint = "1220abc123def456789"  -- User's Canton fingerprint
+  let fingerprint = "1220abc123def456789"
   let testTime = time (date 2025 Jan 15) 12 0 0
 
   -- Issuer creates mint command (after resolving fingerprint → alice)
   mintCmdCid <- submit issuer $ createCmd MintCommand with
     issuer = issuer
     recipient = alice
-    tokenManagerCid = tokenManagerCid
+    tokenConfigCid = tokenConfigCid
     amount = 1000.0
     evmTxHash = evmTxHash
     fingerprint = fingerprint
     tokenSymbol = "USDC"
     auditObservers = [auditor]
 
-  -- Issuer executes the mint (now returns tuple with audit event)
+  -- Issuer executes the mint (delegates to TokenConfig)
   (holdingCid, mintEventCid) <- submit issuer $ exerciseCmd mintCmdCid ExecuteMint with
     timestamp = testTime
 
@@ -66,22 +70,18 @@ testBridgeFlow = script do
   assertMsg "Alice owns tokens" (holding.owner == alice)
   assertMsg "Amount is correct" (holding.amount == 1000.0)
 
-  -- Verify mint event was created
+  -- Verify mint event was created (unified event with evmTxHash)
   Some mintEvent <- queryContractId issuer mintEventCid
   assertMsg "Mint event amount correct" (mintEvent.amount == 1000.0)
   assertMsg "Mint event recipient correct" (mintEvent.recipient == alice)
-  assertMsg "Mint event evmTxHash correct" (mintEvent.evmTxHash == evmTxHash)
-  assertMsg "Mint event fingerprint correct" (mintEvent.fingerprint == fingerprint)
+  assertMsg "Mint event evmTxHash correct" (mintEvent.evmTxHash == Some evmTxHash)
+  assertMsg "Mint event fingerprint correct" (mintEvent.userFingerprint == fingerprint)
 
   debug ">>> Deposit flow complete: Alice has 1000.0 tokens with audit event"
 
   -- ==========================================================================
   -- WITHDRAWAL FLOW: Canton → EVM (Issuer-Controlled)
   -- ==========================================================================
-  -- 1. User requests withdrawal off-chain (via API/UI)
-  -- 2. Issuer creates WithdrawalRequest on their behalf
-  -- 3. Issuer processes withdrawal (burns tokens, creates event)
-  -- 4. Middleware processes WithdrawalEvent → releases on EVM
   
   let evmDestination = EvmAddress "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
   let withdrawalTime = time (date 2025 Jan 15) 14 0 0
@@ -90,7 +90,7 @@ testBridgeFlow = script do
   withdrawalReqCid <- submit issuer $ createCmd WithdrawalRequest with
     issuer = issuer
     userParty = alice
-    tokenManagerCid = tokenManagerCid
+    tokenConfigCid = tokenConfigCid
     holdingCid = holdingCid
     amount = 500.0
     evmDestination = evmDestination
@@ -98,7 +98,7 @@ testBridgeFlow = script do
     tokenSymbol = "USDC"
     auditObservers = [auditor]
 
-  -- Issuer processes the withdrawal (burns tokens, creates events)
+  -- Issuer processes the withdrawal (burns tokens via TokenConfig, creates events)
   (withdrawalEventCid, burnEventCid) <- submit issuer $ exerciseCmd withdrawalReqCid ProcessWithdrawal with
     timestamp = withdrawalTime
 
@@ -108,11 +108,12 @@ testBridgeFlow = script do
   assertMsg "Withdrawal status is Pending" (withdrawalEvent.status == Pending)
   assertMsg "Withdrawal tokenSymbol correct" (withdrawalEvent.tokenSymbol == "USDC")
 
-  -- Verify BridgeBurnEvent was created
+  -- Verify BurnEvent (unified) was created with evmDestination
   Some burnEvent <- queryContractId issuer burnEventCid
   assertMsg "Burn event amount correct" (burnEvent.amount == 500.0)
   assertMsg "Burn event burnedFrom correct" (burnEvent.burnedFrom == alice)
-  assertMsg "Burn event fingerprint correct" (burnEvent.fingerprint == fingerprint)
+  assertMsg "Burn event userFingerprint correct" (burnEvent.userFingerprint == fingerprint)
+  assertMsg "Burn event evmDestination set" (burnEvent.evmDestination == Some evmDestination.value)
 
   debug ">>> Withdrawal initiated: 500.0 tokens pending release on EVM with audit event"
 
@@ -126,7 +127,7 @@ testBridgeFlow = script do
     _ -> fail "Expected Completed status"
 
   debug ">>> Withdrawal completed on EVM"
-  debug "✓ Bridge flow test with audit events completed successfully!"
+  debug "Bridge flow test with unified events completed successfully!"
   pure ()
 
 -- ==========================================================================
@@ -152,13 +153,19 @@ testAuditObserverVisibility = script do
     issuer = issuer
     meta = meta
 
+  tokenConfigCid <- submit issuer $ createCmd TokenConfig with
+    issuer = issuer
+    tokenManagerCid = tokenManagerCid
+    meta = meta
+    auditObservers = [auditor1, auditor2]
+
   let testTime = time (date 2025 Jan 15) 12 0 0
 
-  -- Mint with audit observers
+  -- Mint with audit observers via MintCommand
   mintCmdCid <- submit issuer $ createCmd MintCommand with
     issuer = issuer
     recipient = alice
-    tokenManagerCid = tokenManagerCid
+    tokenConfigCid = tokenConfigCid
     amount = 500.0
     evmTxHash = "0xauditTest"
     fingerprint = "0xAliceFingerprint"
@@ -175,7 +182,7 @@ testAuditObserverVisibility = script do
   Some mintEventFromAuditor2 <- queryContractId auditor2 mintEventCid
   assertMsg "Auditor2 can see event" (mintEventFromAuditor2.amount == 500.0)
 
-  debug "✓ Audit observer visibility test passed!"
+  debug "Audit observer visibility test passed!"
   pure ()
 
 -- ==========================================================================
@@ -200,14 +207,20 @@ testPartialBurnWithAuditEvent = script do
     issuer = issuer
     meta = meta
 
+  tokenConfigCid <- submit issuer $ createCmd TokenConfig with
+    issuer = issuer
+    tokenManagerCid = tokenManagerCid
+    meta = meta
+    auditObservers = [auditor]
+
   let mintTime = time (date 2025 Jan 15) 12 0 0
   let burnTime = time (date 2025 Jan 15) 14 0 0
 
-  -- Mint tokens
+  -- Mint tokens via MintCommand
   mintCmdCid <- submit issuer $ createCmd MintCommand with
     issuer = issuer
     recipient = alice
-    tokenManagerCid = tokenManagerCid
+    tokenConfigCid = tokenConfigCid
     amount = 1000.0
     evmTxHash = "0xMintTx"
     fingerprint = "0xAliceFingerprint"
@@ -223,7 +236,7 @@ testPartialBurnWithAuditEvent = script do
   withdrawalReqCid <- submit issuer $ createCmd WithdrawalRequest with
     issuer = issuer
     userParty = alice
-    tokenManagerCid = tokenManagerCid
+    tokenConfigCid = tokenConfigCid
     holdingCid = holdingCid
     amount = 400.0
     evmDestination = evmDestination
@@ -245,7 +258,7 @@ testPartialBurnWithAuditEvent = script do
       assertMsg "Remainder amount correct" (remainder.amount == 600.0)
     None -> fail "Expected remainder for partial burn"
 
-  debug "✓ Partial burn with audit event test passed!"
+  debug "Partial burn with audit event test passed!"
   pure ()
 
 -- Test basic CIP56 token operations without bridge
@@ -277,10 +290,11 @@ testBasicToken = script do
   Some aliceHolding <- queryContractId alice aliceHoldingCid
   assertMsg "Alice has correct amount" (aliceHolding.amount == 500.0)
 
-  -- Alice transfers to Bob
+  -- Alice transfers to Bob (no existing recipient holding)
   (bobHoldingCid, maybeChange) <- submit alice $ exerciseCmd aliceHoldingCid Transfer with
     to = bob
     value = 200.0
+    existingRecipientHolding = None
     complianceRulesCid = None
     complianceProofCid = None
 
@@ -295,5 +309,5 @@ testBasicToken = script do
       assertMsg "Alice has correct change" (change.amount == 300.0)
     None -> fail "Expected Alice to have change"
 
-  debug "✓ Basic token test completed successfully!"
+  debug "Basic token test completed successfully!"
   pure ()

@@ -75,10 +75,6 @@ build_dars() {
     "cip56-token"
     "bridge-core"
     "bridge-wayfinder"
-    "bridge-usdc"
-    "bridge-cbtc"
-    "bridge-generic"
-    "dvp"
   )
 
   for pkg in "${packages[@]}"; do
@@ -106,10 +102,6 @@ copy_dars_to_quickstart() {
     "cip56-token"
     "bridge-core"
     "bridge-wayfinder"
-    "bridge-usdc"
-    "bridge-cbtc"
-    "bridge-generic"
-    "dvp"
   )
 
   for pkg in "${packages[@]}"; do

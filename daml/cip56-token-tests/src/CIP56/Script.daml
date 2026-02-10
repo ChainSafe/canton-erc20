@@ -45,9 +45,7 @@ test = script do
 
   -- Locked Asset Flow (Safe Transfer)
   
-  -- 1. Alice locks funds for Bob (this also deducts from her balance)
-  -- Important: Alice needs to be able to SEE the rulesCid to pass it.
-  -- We made Alice an observer of ComplianceRules, so this should work.
+  -- 1. Alice locks funds for Bob
   (lockedCid, changeCid) <- submit alice do
     exerciseCmd aHolding Lock with
       receiver = bob
@@ -55,21 +53,100 @@ test = script do
       complianceRulesCid = Some rulesCid
   
   -- 2. Bob claims the locked funds using his proof
-  -- Bob needs to see lockedCid (He is observer of LockedAsset)
-  -- Bob needs to see rulesCid (He is observer of ComplianceRules)
-  -- Bob needs to see bobProofCid (He is observer of ComplianceProof)
-  -- CompleteTransfer calls rules.ValidateProof(proofCid, Bob)
-  -- ValidateProof fetches proofCid. 
-  -- Bob calls ValidateProof. Bob sees proofCid.
-  -- Issuer maintainer of ComplianceRules executes choice? 
-  -- NO. `nonconsuming choice ValidateProof` controller is `user` (Bob).
-  -- So Bob executes `ValidateProof`.
-  -- Bob fetches `proofCid`.
-  -- Inside `ValidateProof` body, does it need Issuer authority?
-  -- No, it just asserts fields.
-  
   _ <- submit bob do
     exerciseCmd lockedCid CompleteTransfer with
       complianceProofCid = Some bobProofCid
+
+  pure ()
+
+-- | Test Transfer with existingRecipientHolding (fragmentation prevention)
+testTransferWithMerge : Script ()
+testTransferWithMerge = script do
+  issuer <- allocateTestParty "issuer"
+  alice  <- allocateTestParty "alice"
+  bob    <- allocateTestParty "bob"
+
+  let meta = ExtendedMetadata with
+        name = "Test Token"
+        symbol = "TEST"
+        decimals = 18
+        isin = None
+        dtiCode = None
+        regulatoryInfo = None
+
+  tmCid <- submit issuer do
+    createCmd CIP56Manager with issuer, meta
+
+  -- Mint to Alice and Bob
+  aliceHolding <- submit issuer do
+    exerciseCmd tmCid Mint with to = alice, amount = 500.0
+
+  bobHolding <- submit issuer do
+    exerciseCmd tmCid Mint with to = bob, amount = 200.0
+
+  -- Alice transfers 100 to Bob, merging into Bob's existing holding.
+  -- Uses submitMulti with readAs issuer so alice can fetch bob's holding
+  -- (in production, the middleware submits with readAs: [issuerParty])
+  (bobNewHolding, aliceChange) <- submitMulti [alice] [issuer] do
+    exerciseCmd aliceHolding Transfer with
+      to = bob
+      value = 100.0
+      existingRecipientHolding = Some bobHolding
+      complianceRulesCid = None
+      complianceProofCid = None
+
+  -- Verify Bob has merged amount (200 + 100 = 300)
+  Some bh <- queryContractId bob bobNewHolding
+  assertMsg "Bob should have 300 (merged)" (bh.amount == 300.0)
+
+  -- Verify Alice has change (500 - 100 = 400)
+  case aliceChange of
+    Some changeCid -> do
+      Some ah <- queryContractId alice changeCid
+      assertMsg "Alice should have 400" (ah.amount == 400.0)
+    None -> fail "Expected Alice to have change"
+
+  pure ()
+
+-- | Test Transfer without existing recipient (first-time recipient)
+testTransferNoExisting : Script ()
+testTransferNoExisting = script do
+  issuer <- allocateTestParty "issuer"
+  alice  <- allocateTestParty "alice"
+  bob    <- allocateTestParty "bob"
+
+  let meta = ExtendedMetadata with
+        name = "Test Token"
+        symbol = "TEST"
+        decimals = 18
+        isin = None
+        dtiCode = None
+        regulatoryInfo = None
+
+  tmCid <- submit issuer do
+    createCmd CIP56Manager with issuer, meta
+
+  aliceHolding <- submit issuer do
+    exerciseCmd tmCid Mint with to = alice, amount = 500.0
+
+  -- Transfer to Bob with no existing holding (None)
+  (bobHolding, aliceChange) <- submit alice do
+    exerciseCmd aliceHolding Transfer with
+      to = bob
+      value = 200.0
+      existingRecipientHolding = None
+      complianceRulesCid = None
+      complianceProofCid = None
+
+  -- Verify Bob received exactly the transferred amount
+  Some bh <- queryContractId bob bobHolding
+  assertMsg "Bob should have 200" (bh.amount == 200.0)
+
+  -- Verify Alice change
+  case aliceChange of
+    Some changeCid -> do
+      Some ah <- queryContractId alice changeCid
+      assertMsg "Alice should have 300" (ah.amount == 300.0)
+    None -> fail "Expected Alice to have change"
 
   pure ()

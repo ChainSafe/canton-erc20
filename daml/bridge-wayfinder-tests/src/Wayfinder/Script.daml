@@ -9,6 +9,7 @@ import DA.Time (time)
 import DA.Date (date, Month(..))
 import Common.Types
 import CIP56.Token
+import CIP56.Config (TokenConfig(..))
 import Wayfinder.Bridge
 
 -- | Simple smoke test for the issuer-centric bridge
@@ -24,14 +25,22 @@ testFullCycle = script do
       issuer = issuer
       meta = promptMetadata
 
-  -- 3. Deploy Bridge Config (issuer-centric) with audit observers
+  -- 3. Deploy TokenConfig (unified mint/burn)
+  tokenConfigCid <- submit issuer do
+    createCmd TokenConfig with
+      issuer = issuer
+      tokenManagerCid = tokenManagerCid
+      meta = promptMetadata
+      auditObservers = []
+
+  -- 4. Deploy Bridge Config (delegates to TokenConfig)
   configCid <- submit issuer do
     createCmd WayfinderBridgeConfig with
       issuer = issuer
-      tokenManagerCid = tokenManagerCid
+      tokenConfigCid = tokenConfigCid
       auditObservers = []
 
-  -- 4. Register Alice (issuer creates fingerprint mapping)
+  -- 5. Register Alice (issuer creates fingerprint mapping)
   let aliceFingerprint = "1220aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   
   aliceMappingCid <- submit issuer do
@@ -40,7 +49,7 @@ testFullCycle = script do
       fingerprint = aliceFingerprint
       evmAddress = Some (EvmAddress "0xAliceEthWallet...")
 
-  -- 5. DEPOSIT FLOW (Ethereum -> Canton)
+  -- 6. DEPOSIT FLOW (Ethereum -> Canton)
   let testTime = time (date 2025 Jan 1) 12 0 0
   
   -- Middleware sees deposit event, creates PendingDeposit
@@ -51,7 +60,7 @@ testFullCycle = script do
       evmTxHash = "0xDepositTx..."
       timestamp = testTime
 
-  -- Issuer processes deposit and mints (now returns tuple with audit event)
+  -- Issuer processes deposit and mints (returns holding + audit event)
   (holdingCid, _mintEventCid) <- submit issuer do
     exerciseCmd configCid ProcessDepositAndMint with
       depositCid = depositCid
@@ -63,6 +72,6 @@ testFullCycle = script do
   assertMsg "Alice received PROMPT" (holding.amount == 100.0)
   assertMsg "Correct Symbol" (holding.meta.symbol == "PROMPT")
 
-  debug "✓ Smoke test passed!"
+  debug "Smoke test passed!"
   
   pure ()
