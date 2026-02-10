@@ -1,14 +1,17 @@
 -- | Wayfinder Bridge - EVM Bridge Layer
 --
 -- This module implements the Wayfinder PROMPT token bridge.
--- It is a thin EVM bridge layer that handles only EVM-specific concerns:
--- - Party/fingerprint registration
+-- It is a thin EVM bridge layer that handles only bridging concerns:
 -- - EVM deposit validation and pending deposit management
 -- - Withdrawal initiation with EVM destination
 --
 -- The bridge holds a tokenConfigCid reference and delegates all mint/burn
 -- operations to TokenConfig (CIP56.Config). It does not create holdings
 -- or audit events directly.
+--
+-- Registration (FingerprintMapping creation) is handled separately by the
+-- API server, not by the bridge. Observer management and metadata queries
+-- are handled by TokenConfig.
 --
 -- To bridge a different ERC-20 token (e.g. USDC), create a new bridge
 -- config module that follows this same pattern: hold a tokenConfigCid
@@ -20,7 +23,7 @@ module Wayfinder.Bridge where
 import Common.Types
 import Common.FingerprintAuth
 import CIP56.Token (CIP56Holding)
-import CIP56.Config hiding (GetMetadata, AddAuditObserver, RemoveAuditObserver, SetMetadata)
+import CIP56.Config
 import CIP56.Events (MintEvent)
 import Bridge.Contracts
 
@@ -55,48 +58,6 @@ template WayfinderBridgeConfig
   where
     signatory issuer
     observer auditObservers
-
-    -- =========================================================================
-    -- METADATA
-    -- =========================================================================
-    
-    nonconsuming choice GetMetadata : ExtendedMetadata
-      controller issuer
-      do pure promptMetadata
-
-    -- =========================================================================
-    -- AUDIT OBSERVER MANAGEMENT
-    -- =========================================================================
-
-    choice AddAuditObserver : ContractId WayfinderBridgeConfig
-      with
-        newObserver : Party
-      controller issuer
-      do create this with auditObservers = newObserver :: auditObservers
-
-    choice RemoveAuditObserver : ContractId WayfinderBridgeConfig
-      with
-        observerToRemove : Party
-      controller issuer
-      do create this with auditObservers = filter (/= observerToRemove) auditObservers
-
-    -- =========================================================================
-    -- PARTY MANAGEMENT (Issuer allocates parties for users)
-    -- =========================================================================
-    
-    -- | Register a user's fingerprint mapping
-    nonconsuming choice RegisterUser : ContractId FingerprintMapping
-      with
-        userParty   : Party
-        fingerprint : Text
-        evmAddress  : Optional EvmAddress
-      controller issuer
-      do
-        create FingerprintMapping with
-          issuer = issuer
-          userParty = userParty
-          fingerprint = fingerprint
-          evmAddress = evmAddress
 
     -- =========================================================================
     -- DEPOSIT FLOW: EVM → Canton
@@ -165,23 +126,3 @@ template WayfinderBridgeConfig
           tokenSymbol = promptMetadata.symbol
           auditObservers = auditObservers
 
-    -- =========================================================================
-    -- DIRECT MINT (Admin/Testing)
-    -- =========================================================================
-    
-    -- | Direct mint to a Party (delegates to TokenConfig)
-    nonconsuming choice DirectMint : (ContractId CIP56Holding, ContractId MintEvent)
-      with
-        recipient   : Party
-        amount      : Decimal
-        evmTxHash   : Text
-        fingerprint : Text
-        timestamp   : Time
-      controller issuer
-      do
-        exercise tokenConfigCid IssuerMint with
-          recipient = recipient
-          amount = amount
-          eventTime = timestamp
-          userFingerprint = fingerprint
-          evmTxHash = Some evmTxHash

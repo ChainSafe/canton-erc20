@@ -121,11 +121,11 @@ daml script \
 | Template/Choice | Purpose |
 |-----------------|---------|
 | `WayfinderBridgeConfig` | Central configuration for the bridge |
-| `RegisterUser` | Create fingerprint → Party mapping |
 | `CreatePendingDeposit` | Create pending deposit from EVM event |
 | `ProcessDepositAndMint` | Resolve fingerprint and mint in one step |
 | `InitiateWithdrawal` | Start withdrawal flow for user |
-| `DirectMint` | Admin/testing mint (bypasses fingerprint) |
+
+Note: User registration (`FingerprintMapping` creation) is handled directly by the API server, not through the bridge. Observer management and metadata queries use `TokenConfig`.
 
 ## Running Tests
 

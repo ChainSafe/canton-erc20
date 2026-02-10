@@ -8,6 +8,7 @@ import Daml.Script
 import DA.Time (time)
 import DA.Date (date, Month(..))
 import Common.Types
+import Common.FingerprintAuth (FingerprintMapping(..))
 import CIP56.Token
 import CIP56.Config (TokenConfig(..))
 import Wayfinder.Bridge
@@ -40,11 +41,12 @@ testFullCycle = script do
       tokenConfigCid = tokenConfigCid
       auditObservers = []
 
-  -- 5. Register Alice (issuer creates fingerprint mapping)
+  -- 5. Register Alice (issuer creates fingerprint mapping directly)
   let aliceFingerprint = "1220aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   
   aliceMappingCid <- submit issuer do
-    exerciseCmd configCid RegisterUser with
+    createCmd FingerprintMapping with
+      issuer = issuer
       userParty = alice
       fingerprint = aliceFingerprint
       evmAddress = Some (EvmAddress "0xAliceEthWallet...")
