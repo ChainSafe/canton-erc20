@@ -1,6 +1,6 @@
 module CIP56.TransferFactory where
 
-import Splice.Api.Token.MetadataV1 (emptyMetadata)
+import Splice.Api.Token.MetadataV1 (Metadata, emptyMetadata)
 import Splice.Api.Token.HoldingV1 (Holding(..), InstrumentId(..))
 import Splice.Api.Token.TransferInstructionV1
 
@@ -34,7 +34,7 @@ template CIP56TransferFactory
         assertMsg "amount must be positive" (amount > 0.0)
         assertMsg "inputHoldingCids must not be empty" (not (null inputHoldingCids))
 
-        total <- processInputHoldings admin instrumentId sender inputHoldingCids
+        (total, holdingMeta) <- processInputHoldings admin instrumentId sender inputHoldingCids
 
         assertMsg "insufficient input holdings" (total >= amount)
 
@@ -44,7 +44,7 @@ template CIP56TransferFactory
           amount
           instrumentId
           lock = None
-          meta = emptyMetadata
+          meta = holdingMeta
 
         senderChangeCids <- if total > amount
           then do
@@ -54,7 +54,7 @@ template CIP56TransferFactory
               amount = total - amount
               instrumentId
               lock = None
-              meta = emptyMetadata
+              meta = holdingMeta
             pure [toInterfaceContractId @Holding changeCid]
           else pure []
 
@@ -68,9 +68,9 @@ template CIP56TransferFactory
         assertMsg "expectedAdmin mismatch" (expectedAdmin == admin)
         pure TransferFactoryView with admin, meta = emptyMetadata
 
-processInputHoldings : Party -> InstrumentId -> Party -> [ContractId Holding] -> Update Decimal
+processInputHoldings : Party -> InstrumentId -> Party -> [ContractId Holding] -> Update (Decimal, Metadata)
 processInputHoldings admin instrumentId sender holdings = do
-  amounts <- forA holdings $ \holdingCid -> do
+  results <- forA holdings $ \holdingCid -> do
     let concreteCid = fromInterfaceContractId @CIP56Holding holdingCid
     holding <- fetch concreteCid
     assertMsg "input holding: wrong issuer" (holding.issuer == admin)
@@ -78,5 +78,9 @@ processInputHoldings admin instrumentId sender holdings = do
     assertMsg "input holding: wrong instrument" (holding.instrumentId == instrumentId)
     assertMsg "input holding: must not be locked" (holding.lock == None)
     archive concreteCid
-    pure holding.amount
-  pure (sum amounts)
+    pure (holding.amount, holding.meta)
+  let amounts = map fst results
+      firstMeta = case results of
+        (_, m) :: _ -> m
+        [] -> emptyMetadata
+  pure (sum amounts, firstMeta)

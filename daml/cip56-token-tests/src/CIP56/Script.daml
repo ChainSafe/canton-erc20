@@ -93,6 +93,8 @@ testTransferViaFactory = script do
       let bobHolding : ContractId CIP56Holding = fromInterfaceContractId bobHoldingI
       Some bh <- queryContractId bob bobHolding
       assertMsg "Bob has 200" (bh.amount == 200.0)
+      assertMsg "Bob holding preserves metadata" (bh.meta == meta)
+      assertMsg "Bob holding preserves instrumentId" (bh.instrumentId == instrumentId)
     _ -> fail "Expected completed transfer"
 
   case result.senderChangeCids of
@@ -100,6 +102,8 @@ testTransferViaFactory = script do
       let changeCid : ContractId CIP56Holding = fromInterfaceContractId changeCidI
       Some ch <- queryContractId alice changeCid
       assertMsg "Alice has 300 change" (ch.amount == 300.0)
+      assertMsg "Change holding preserves metadata" (ch.meta == meta)
+      assertMsg "Change holding preserves instrumentId" (ch.instrumentId == instrumentId)
     _ -> fail "Expected one sender change holding"
 
   debug "Transfer via factory test passed!"
@@ -155,6 +159,8 @@ testTransferMultipleInputs = script do
       let bobHolding : ContractId CIP56Holding = fromInterfaceContractId bobHoldingI
       Some bh <- queryContractId bob bobHolding
       assertMsg "Bob has 250" (bh.amount == 250.0)
+      assertMsg "Bob holding preserves metadata" (bh.meta == meta)
+      assertMsg "Bob holding preserves instrumentId" (bh.instrumentId == instrumentId)
     _ -> fail "Expected completed transfer"
 
   case result.senderChangeCids of
@@ -162,6 +168,7 @@ testTransferMultipleInputs = script do
       let changeCid : ContractId CIP56Holding = fromInterfaceContractId changeCidI
       Some ch <- queryContractId alice changeCid
       assertMsg "Alice has 50 change (300 - 250)" (ch.amount == 50.0)
+      assertMsg "Change holding preserves metadata" (ch.meta == meta)
     _ -> fail "Expected one sender change holding"
 
   debug "Multi-input transfer test passed!"
@@ -205,7 +212,13 @@ testTransferExactAmount = script do
       extraArgs = ExtraArgs with context = emptyChoiceContext, meta = emptyMetadata
 
   case result.output of
-    TransferInstructionResult_Completed _ -> pure ()
+    TransferInstructionResult_Completed receiverHoldings -> do
+      let [bobHoldingI] = receiverHoldings
+      let bobHolding : ContractId CIP56Holding = fromInterfaceContractId bobHoldingI
+      Some bh <- queryContractId bob bobHolding
+      assertMsg "Bob has 100" (bh.amount == 100.0)
+      assertMsg "Bob holding preserves metadata" (bh.meta == meta)
+      assertMsg "Bob holding preserves instrumentId" (bh.instrumentId == instrumentId)
     _ -> fail "Expected completed transfer"
 
   assertMsg "No sender change (exact amount)" (null result.senderChangeCids)
