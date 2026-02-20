@@ -67,6 +67,7 @@ template CIP56Manager
         holding <- fetch holdingCid
         assertMsg "issuer matches" (holding.issuer == issuer)
         assertMsg "amount > 0" (amount > 0.0)
+        assertMsg "holding must not be locked" (holding.lock == None)
         assertMsg "insufficient balance" (holding.amount >= amount)
         archive holdingCid
         if holding.amount > amount
@@ -76,7 +77,7 @@ template CIP56Manager
               owner = holding.owner
               amount = holding.amount - amount
               instrumentId = holding.instrumentId
-              lock = None
+              lock = holding.lock
               meta = holding.meta
             pure (Some cid)
           else pure None

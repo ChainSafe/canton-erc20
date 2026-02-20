@@ -4,7 +4,7 @@ import Daml.Script
 import DA.Time (time, hours, addRelTime)
 import DA.Date (date, Month(..))
 import Splice.Api.Token.MetadataV1 (ExtraArgs(..), emptyMetadata, emptyChoiceContext)
-import Splice.Api.Token.HoldingV1 (Holding(..), InstrumentId(..))
+import Splice.Api.Token.HoldingV1 (Holding(..), InstrumentId(..), Lock(..))
 import Splice.Api.Token.TransferInstructionV1
 
 import CIP56.Token
@@ -224,6 +224,38 @@ testTransferExactAmount = script do
   assertMsg "No sender change (exact amount)" (null result.senderChangeCids)
 
   debug "Exact-amount transfer test passed!"
+  pure ()
+
+testBurnLockedHoldingFails : Script ()
+testBurnLockedHoldingFails = script do
+  issuer <- allocateTestParty "issuer"
+  alice  <- allocateTestParty "alice"
+
+  let instrumentId = InstrumentId with admin = issuer, id = "LOCK"
+  let meta = mkMetadata [("splice.chainsafe.io/symbol", "LOCK")]
+
+  tmCid <- submit issuer do
+    createCmd CIP56Manager with issuer, instrumentId, meta
+
+  holdingCid <- submit issuer do
+    exerciseCmd tmCid Mint with to = alice, amount = 100.0
+
+  let lock = Lock with
+        holders = [alice]
+        expiresAt = None
+        expiresAfter = None
+        context = Some "escrow"
+
+  submit issuer do
+    archiveCmd holdingCid
+
+  lockedCid <- submit issuer do
+    createCmd CIP56Holding with issuer, owner = alice, amount = 100.0, instrumentId, lock = Some lock, meta
+
+  submitMustFail issuer do
+    exerciseCmd tmCid Burn with holdingCid = lockedCid, amount = 50.0
+
+  debug "Burn locked holding correctly rejected!"
   pure ()
 
 testHoldingInterface : Script ()
