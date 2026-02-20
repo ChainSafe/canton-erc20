@@ -1,69 +1,44 @@
 -- | Wayfinder Bridge - EVM Bridge Layer
 --
--- This module implements the Wayfinder PROMPT token bridge.
--- It is a thin EVM bridge layer that handles only bridging concerns:
--- - EVM deposit validation and pending deposit management
--- - Withdrawal initiation with EVM destination
---
--- The bridge holds a tokenConfigCid reference and delegates all mint/burn
--- operations to TokenConfig (CIP56.Config). It does not create holdings
--- or audit events directly.
---
--- Registration (FingerprintMapping creation) is handled separately by the
--- API server, not by the bridge. Observer management and metadata queries
--- are handled by TokenConfig.
---
--- To bridge a different ERC-20 token (e.g. USDC), create a new bridge
--- config module that follows this same pattern: hold a tokenConfigCid
--- pointing at a separate TokenConfig instance with its own CIP56Manager
--- and metadata. The core mint/burn/event logic is shared and identical.
+-- Thin EVM bridge layer that delegates mint/burn to TokenConfig.
+-- Registration (FingerprintMapping) is handled separately by the API server.
 
 module Wayfinder.Bridge where
 
-import Common.Types
+import qualified DA.TextMap as TM
+
+import Common.Types (EvmAddress(..))
 import Common.FingerprintAuth
-import CIP56.Token (CIP56Holding)
+import Splice.Api.Token.MetadataV1 (Metadata(..))
+import Splice.Api.Token.HoldingV1 (InstrumentId(..))
+import CIP56.Token (CIP56Holding, getSymbol)
 import CIP56.Config
 import CIP56.Events (MintEvent)
 import Bridge.Contracts
 
--- =============================================================================
--- WAYFINDER TOKEN METADATA
--- =============================================================================
+promptInstrumentId : Party -> InstrumentId
+promptInstrumentId admin = InstrumentId with
+  admin
+  id = "PROMPT"
 
--- | PROMPT token metadata (CIP-56 compliant)
-promptMetadata : ExtendedMetadata
-promptMetadata = ExtendedMetadata with
-  name = "Wayfinder PROMPT"
-  symbol = "PROMPT"
-  decimals = 18
-  isin = None
-  dtiCode = None
-  regulatoryInfo = Some "ERC20: 0x28d38df637db75533bd3f71426f3410a82041544"
+promptMetadata : Metadata
+promptMetadata = Metadata with
+  values = TM.fromList
+    [ ("splice.chainsafe.io/name", "Wayfinder PROMPT")
+    , ("splice.chainsafe.io/symbol", "PROMPT")
+    , ("splice.chainsafe.io/decimals", "18")
+    , ("splice.chainsafe.io/erc20", "0x28d38df637db75533bd3f71426f3410a82041544")
+    ]
 
--- =============================================================================
--- WAYFINDER BRIDGE CONFIG (EVM Bridge Layer)
--- =============================================================================
-
--- | Configuration for the Wayfinder Bridge
---
--- The issuer (operator) controls all bridge operations.
--- Mint/burn is delegated to the unified TokenConfig.
--- NOTE: Contract key removed for DAML-LF 2.x compatibility.
 template WayfinderBridgeConfig
   with
-    issuer : Party                              -- Bridge issuer/operator
-    tokenConfigCid : ContractId TokenConfig      -- Unified token config (handles mint/burn)
-    auditObservers : [Party]                    -- Parties who can observe audit events
+    issuer : Party
+    tokenConfigCid : ContractId TokenConfig
+    auditObservers : [Party]
   where
     signatory issuer
     observer auditObservers
 
-    -- =========================================================================
-    -- DEPOSIT FLOW: EVM → Canton
-    -- =========================================================================
-    
-    -- | Create pending deposit from EVM event
     nonconsuming choice CreatePendingDeposit : ContractId PendingDeposit
       with
         fingerprint : Text
@@ -80,7 +55,6 @@ template WayfinderBridgeConfig
           tokenId = "PROMPT"
           createdAt = timestamp
 
-    -- | Process deposit and mint tokens (delegates to TokenConfig)
     nonconsuming choice ProcessDepositAndMint : (ContractId CIP56Holding, ContractId MintEvent)
       with
         depositCid  : ContractId PendingDeposit
@@ -88,11 +62,9 @@ template WayfinderBridgeConfig
         timestamp   : Time
       controller issuer
       do
-        -- Process the deposit to get receipt
         receiptCid <- exercise depositCid ProcessDeposit with mappingCid = mappingCid
         receipt <- fetch receiptCid
 
-        -- Delegate mint to TokenConfig (unified path)
         exercise tokenConfigCid IssuerMint with
           recipient = receipt.recipient
           amount = receipt.amount
@@ -100,11 +72,6 @@ template WayfinderBridgeConfig
           userFingerprint = receipt.fingerprint
           evmTxHash = Some receipt.evmTxHash
 
-    -- =========================================================================
-    -- WITHDRAWAL FLOW: Canton → EVM
-    -- =========================================================================
-    
-    -- | Initiate withdrawal for a user
     nonconsuming choice InitiateWithdrawal : ContractId WithdrawalRequest
       with
         mappingCid      : ContractId FingerprintMapping
@@ -114,7 +81,7 @@ template WayfinderBridgeConfig
       controller issuer
       do
         mapping <- fetch mappingCid
-        
+
         create WithdrawalRequest with
           issuer = issuer
           userParty = mapping.userParty
@@ -123,6 +90,5 @@ template WayfinderBridgeConfig
           amount = amount
           evmDestination = evmDestination
           fingerprint = mapping.fingerprint
-          tokenSymbol = promptMetadata.symbol
+          tokenSymbol = getSymbol promptMetadata
           auditObservers = auditObservers
-
