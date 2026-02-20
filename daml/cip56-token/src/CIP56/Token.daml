@@ -1,70 +1,48 @@
 module CIP56.Token where
 
-import Common.Types
-import CIP56.Compliance
+import qualified DA.TextMap as TM
+import DA.Optional (fromOptional)
 
--- Locked asset representing funds in transit
-template LockedAsset
+import Splice.Api.Token.MetadataV1 (Metadata(..))
+import Splice.Api.Token.HoldingV1 (Holding(..), HoldingView(..), InstrumentId(..), Lock(..))
+
+mkMetadata : [(Text, Text)] -> Metadata
+mkMetadata kvs = Metadata with values = TM.fromList kvs
+
+lookupMeta : Text -> Metadata -> Text
+lookupMeta key m = fromOptional "" (TM.lookup key m.values)
+
+getSymbol : Metadata -> Text
+getSymbol = lookupMeta "splice.chainsafe.io/symbol"
+
+template CIP56Holding
   with
-    issuer : Party
-    sender : Party
-    receiver : Party
-    amount : Decimal
-    meta : ExtendedMetadata
-    complianceRulesCid : Optional (ContractId ComplianceRules)
+    issuer       : Party
+    owner        : Party
+    amount       : Decimal
+    instrumentId : InstrumentId
+    lock         : Optional Lock
+    meta         : Metadata
   where
-    signatory issuer, sender
-    observer receiver
+    signatory issuer
+    observer  owner
 
-    choice CompleteTransfer : ContractId CIP56Holding
-      with
-        complianceProofCid : Optional (ContractId ComplianceProof)
-      controller receiver
-      do
-        -- Check compliance
-        case complianceRulesCid of
-          Some rulesCid -> do
-            rules <- fetch rulesCid
-            assertMsg "Compliance rules issuer mismatch" (rules.issuer == issuer)
-            if rules.isWhitelistEnabled then do
-               case complianceProofCid of
-                 Some proofCid -> do
-                   valid <- exercise rulesCid ValidateProof with proofCid = proofCid, user = receiver
-                   assertMsg "Invalid compliance proof" valid
-                 None -> abort "Compliance proof required"
-            else pure ()
-          None -> pure ()
-
-        -- Create final holding for receiver
-        create CIP56Holding with
-          issuer = issuer
-          owner = receiver
-          amount = amount
-          meta = meta
-
-    choice Unlock : ContractId CIP56Holding
-      controller sender
-      do
-        -- Refund to sender
-        create CIP56Holding with
-          issuer = issuer
-          owner = sender
-          amount = amount
-          meta = meta
-
--- CIP-56 compliant token implementation
+    interface instance Holding for CIP56Holding where
+      view = HoldingView with
+        owner
+        instrumentId
+        amount
+        lock
+        meta
 
 template CIP56Manager
   with
-    issuer : Party
-    meta   : ExtendedMetadata
+    issuer       : Party
+    instrumentId : InstrumentId
+    meta         : Metadata
   where
     signatory issuer
 
-    -- NOTE: Contract key removed for DAML-LF 2.x compatibility
-    -- Track CIP56Manager ContractId in your application instead of using fetchByKey
-
-    -- Mint tokens to a recipient (nonconsuming so manager can be reused)
     nonconsuming choice Mint : ContractId CIP56Holding
       with
         to     : Party
@@ -72,10 +50,14 @@ template CIP56Manager
       controller issuer
       do
         assertMsg "amount > 0" (amount > 0.0)
-        create CIP56Holding with issuer, owner = to, amount, meta
+        create CIP56Holding with
+          issuer
+          owner = to
+          amount
+          instrumentId
+          lock = None
+          meta
 
-    -- Burn tokens (nonconsuming so manager can be reused)
-    -- Returns remainder holding if partial burn, None if full burn
     nonconsuming choice Burn : Optional (ContractId CIP56Holding)
       with
         holdingCid : ContractId CIP56Holding
@@ -85,128 +67,24 @@ template CIP56Manager
         holding <- fetch holdingCid
         assertMsg "issuer matches" (holding.issuer == issuer)
         assertMsg "amount > 0" (amount > 0.0)
+        assertMsg "holding must not be locked" (holding.lock == None)
         assertMsg "insufficient balance" (holding.amount >= amount)
         archive holdingCid
-        -- Create remainder holding if partial burn
         if holding.amount > amount
           then do
             cid <- create CIP56Holding with
               issuer = holding.issuer
               owner = holding.owner
               amount = holding.amount - amount
+              instrumentId = holding.instrumentId
+              lock = holding.lock
               meta = holding.meta
             pure (Some cid)
           else pure None
 
-    -- Update token metadata
     choice UpdateMetadata : ContractId CIP56Manager
       with
-        newMeta : ExtendedMetadata
+        newMeta : Metadata
       controller issuer
       do
         create this with meta = newMeta
-
--- CIP-56 compliant holding template
-template CIP56Holding
-  with
-    issuer : Party
-    owner  : Party
-    amount : Decimal
-    meta   : ExtendedMetadata
-  where
-    signatory issuer
-    observer  owner
-
-    -- Direct Transfer (Atomic)
-    --
-    -- Transfers `value` tokens from this holding to `to`.
-    -- If `existingRecipientHolding` is provided, the recipient's old holding
-    -- is archived and merged into the new one, preventing fragmentation.
-    -- Invariant: each user should have exactly one holding per token.
-    choice Transfer : (ContractId CIP56Holding, Optional (ContractId CIP56Holding))
-      with
-        to    : Party
-        value : Decimal
-        existingRecipientHolding : Optional (ContractId CIP56Holding)
-        complianceRulesCid : Optional (ContractId ComplianceRules)
-        complianceProofCid : Optional (ContractId ComplianceProof)
-      controller owner
-      do
-        assertMsg "value > 0" (value > 0.0)
-        assertMsg "sufficient balance" (amount >= value)
-
-        -- Check compliance if rules provided
-        case complianceRulesCid of
-          Some rulesCid -> do
-            rules <- fetch rulesCid
-            assertMsg "Compliance rules issuer mismatch" (rules.issuer == issuer)
-            
-            if rules.isWhitelistEnabled then do
-              case complianceProofCid of
-                Some proofCid -> do
-                  -- Validate receiver's proof
-                  valid <- exercise rulesCid ValidateProof with proofCid = proofCid, user = to
-                  assertMsg "Invalid compliance proof" valid
-                None -> abort "Compliance proof required but not provided"
-            else pure ()
-            
-          None -> pure ()
-
-        -- Determine recipient amount: transferred value + existing holding (if any)
-        recipientAmount <- case existingRecipientHolding of
-          Some existingCid -> do
-            existing <- fetch existingCid
-            assertMsg "existing holding: same issuer" (existing.issuer == issuer)
-            assertMsg "existing holding: same owner" (existing.owner == to)
-            archive existingCid
-            pure (existing.amount + value)
-          None -> pure value
-
-        recipientCid <- create CIP56Holding with
-          issuer = issuer
-          owner  = to
-          amount = recipientAmount
-          meta   = meta
-
-        changeCid <- if amount > value
-          then do
-            cid <- create CIP56Holding with
-              issuer = issuer
-              owner  = owner
-              amount = amount - value
-              meta   = meta
-            pure (Some cid)
-          else pure None
-
-        pure (recipientCid, changeCid)
-
-    -- Lock funds for async transfer (Safe Transfer / Transfer Proposal)
-    choice Lock : (ContractId LockedAsset, Optional (ContractId CIP56Holding))
-      with
-        receiver : Party
-        value : Decimal
-        complianceRulesCid : Optional (ContractId ComplianceRules)
-      controller owner
-      do
-        assertMsg "value > 0" (value > 0.0)
-        assertMsg "sufficient balance" (amount >= value)
-        
-        lockedCid <- create LockedAsset with
-          issuer = issuer
-          sender = owner
-          receiver = receiver
-          amount = value
-          meta = meta
-          complianceRulesCid = complianceRulesCid
-          
-        changeCid <- if amount > value
-          then do
-            cid <- create CIP56Holding with
-              issuer = issuer
-              owner  = owner
-              amount = amount - value
-              meta   = meta
-            pure (Some cid)
-          else pure None
-          
-        pure (lockedCid, changeCid)

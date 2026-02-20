@@ -1,152 +1,284 @@
 module CIP56.Script where
 
 import Daml.Script
-import Common.Types
-import CIP56.Token
-import CIP56.Compliance
+import DA.Time (time, hours, addRelTime)
+import DA.Date (date, Month(..))
+import Splice.Api.Token.MetadataV1 (ExtraArgs(..), emptyMetadata, emptyChoiceContext)
+import Splice.Api.Token.HoldingV1 (Holding(..), InstrumentId(..), Lock(..))
+import Splice.Api.Token.TransferInstructionV1
 
--- Simple party allocation for tests (SDK 3.x compatible)
+import CIP56.Token
+import CIP56.TransferFactory (CIP56TransferFactory(..))
+
 allocateTestParty : Text -> Script Party
 allocateTestParty name = allocatePartyByHint (PartyIdHint name)
 
-test : Script ()
-test = script do
+testMintAndBurn : Script ()
+testMintAndBurn = script do
   issuer <- allocateTestParty "issuer"
   alice  <- allocateTestParty "alice"
-  bob    <- allocateTestParty "bob"
 
-  let meta = ExtendedMetadata with 
-        name = "Canton Coin"
-        symbol = "CCN"
-        decimals = 6
-        isin = None
-        dtiCode = None
-        regulatoryInfo = None
-
-  -- Setup Compliance
-  rulesCid <- submit issuer do
-    createCmd ComplianceRules with
-      issuer = issuer
-      isWhitelistEnabled = True
-      observers = [alice, bob]
-
-  -- Issue proofs to Alice and Bob
-  aliceProofCid <- submit issuer do
-    createCmd ComplianceProof with issuer, user = alice
-
-  bobProofCid <- submit issuer do
-    createCmd ComplianceProof with issuer, user = bob
+  let instrumentId = InstrumentId with admin = issuer, id = "CCN"
+  let meta = mkMetadata
+        [ ("splice.chainsafe.io/name", "Canton Coin")
+        , ("splice.chainsafe.io/symbol", "CCN")
+        , ("splice.chainsafe.io/decimals", "6")
+        ]
 
   tmCid <- submit issuer do
-    createCmd CIP56Manager with issuer, meta
+    createCmd CIP56Manager with issuer, instrumentId, meta
 
-  aHolding <- submit issuer do
+  holdingCid <- submit issuer do
     exerciseCmd tmCid Mint with to = alice, amount = 100.0
 
-  -- Locked Asset Flow (Safe Transfer)
-  
-  -- 1. Alice locks funds for Bob
-  (lockedCid, changeCid) <- submit alice do
-    exerciseCmd aHolding Lock with
-      receiver = bob
-      value = 30.0
-      complianceRulesCid = Some rulesCid
-  
-  -- 2. Bob claims the locked funds using his proof
-  _ <- submit bob do
-    exerciseCmd lockedCid CompleteTransfer with
-      complianceProofCid = Some bobProofCid
+  Some h <- queryContractId alice holdingCid
+  assertMsg "Alice has 100" (h.amount == 100.0)
+  assertMsg "instrumentId matches" (h.instrumentId == instrumentId)
+  assertMsg "not locked" (h.lock == None)
 
+  remainderCid <- submit issuer do
+    exerciseCmd tmCid Burn with holdingCid, amount = 40.0
+
+  case remainderCid of
+    Some cid -> do
+      Some r <- queryContractId alice cid
+      assertMsg "Remainder is 60" (r.amount == 60.0)
+    None -> fail "Expected remainder"
+
+  debug "Mint and burn test passed!"
   pure ()
 
--- | Test Transfer with existingRecipientHolding (fragmentation prevention)
-testTransferWithMerge : Script ()
-testTransferWithMerge = script do
+testTransferViaFactory : Script ()
+testTransferViaFactory = script do
   issuer <- allocateTestParty "issuer"
   alice  <- allocateTestParty "alice"
   bob    <- allocateTestParty "bob"
 
-  let meta = ExtendedMetadata with
-        name = "Test Token"
-        symbol = "TEST"
-        decimals = 18
-        isin = None
-        dtiCode = None
-        regulatoryInfo = None
+  let instrumentId = InstrumentId with admin = issuer, id = "TEST"
+  let meta = mkMetadata
+        [ ("splice.chainsafe.io/name", "Test Token")
+        , ("splice.chainsafe.io/symbol", "TEST")
+        , ("splice.chainsafe.io/decimals", "18")
+        ]
 
   tmCid <- submit issuer do
-    createCmd CIP56Manager with issuer, meta
+    createCmd CIP56Manager with issuer, instrumentId, meta
 
-  -- Mint to Alice and Bob
   aliceHolding <- submit issuer do
     exerciseCmd tmCid Mint with to = alice, amount = 500.0
 
-  bobHolding <- submit issuer do
-    exerciseCmd tmCid Mint with to = bob, amount = 200.0
+  factoryCid <- submit issuer do
+    createCmd CIP56TransferFactory with admin = issuer
 
-  -- Alice transfers 100 to Bob, merging into Bob's existing holding.
-  -- Uses submitMulti with readAs issuer so alice can fetch bob's holding
-  -- (in production, the middleware submits with readAs: [issuerParty])
-  (bobNewHolding, aliceChange) <- submitMulti [alice] [issuer] do
-    exerciseCmd aliceHolding Transfer with
-      to = bob
-      value = 100.0
-      existingRecipientHolding = Some bobHolding
-      complianceRulesCid = None
-      complianceProofCid = None
+  let now = time (date 2025 Jan 15) 12 0 0
+  setTime now
 
-  -- Verify Bob has merged amount (200 + 100 = 300)
-  Some bh <- queryContractId bob bobNewHolding
-  assertMsg "Bob should have 300 (merged)" (bh.amount == 300.0)
+  result <- submitMulti [alice] [issuer] do
+    exerciseCmd (toInterfaceContractId @TransferFactory factoryCid) TransferFactory_Transfer with
+      expectedAdmin = issuer
+      transfer = Transfer with
+        sender = alice
+        receiver = bob
+        amount = 200.0
+        instrumentId
+        requestedAt = now
+        executeBefore = addRelTime now (hours 1)
+        inputHoldingCids = [toInterfaceContractId @Holding aliceHolding]
+        meta = emptyMetadata
+      extraArgs = ExtraArgs with context = emptyChoiceContext, meta = emptyMetadata
 
-  -- Verify Alice has change (500 - 100 = 400)
-  case aliceChange of
-    Some changeCid -> do
-      Some ah <- queryContractId alice changeCid
-      assertMsg "Alice should have 400" (ah.amount == 400.0)
-    None -> fail "Expected Alice to have change"
+  case result.output of
+    TransferInstructionResult_Completed receiverHoldings -> do
+      let [bobHoldingI] = receiverHoldings
+      let bobHolding : ContractId CIP56Holding = fromInterfaceContractId bobHoldingI
+      Some bh <- queryContractId bob bobHolding
+      assertMsg "Bob has 200" (bh.amount == 200.0)
+      assertMsg "Bob holding preserves metadata" (bh.meta == meta)
+      assertMsg "Bob holding preserves instrumentId" (bh.instrumentId == instrumentId)
+    _ -> fail "Expected completed transfer"
 
+  case result.senderChangeCids of
+    [changeCidI] -> do
+      let changeCid : ContractId CIP56Holding = fromInterfaceContractId changeCidI
+      Some ch <- queryContractId alice changeCid
+      assertMsg "Alice has 300 change" (ch.amount == 300.0)
+      assertMsg "Change holding preserves metadata" (ch.meta == meta)
+      assertMsg "Change holding preserves instrumentId" (ch.instrumentId == instrumentId)
+    _ -> fail "Expected one sender change holding"
+
+  debug "Transfer via factory test passed!"
   pure ()
 
--- | Test Transfer without existing recipient (first-time recipient)
-testTransferNoExisting : Script ()
-testTransferNoExisting = script do
+testTransferMultipleInputs : Script ()
+testTransferMultipleInputs = script do
   issuer <- allocateTestParty "issuer"
   alice  <- allocateTestParty "alice"
   bob    <- allocateTestParty "bob"
 
-  let meta = ExtendedMetadata with
-        name = "Test Token"
-        symbol = "TEST"
-        decimals = 18
-        isin = None
-        dtiCode = None
-        regulatoryInfo = None
+  let instrumentId = InstrumentId with admin = issuer, id = "TEST"
+  let meta = mkMetadata
+        [ ("splice.chainsafe.io/name", "Test Token")
+        , ("splice.chainsafe.io/symbol", "TEST")
+        , ("splice.chainsafe.io/decimals", "18")
+        ]
 
   tmCid <- submit issuer do
-    createCmd CIP56Manager with issuer, meta
+    createCmd CIP56Manager with issuer, instrumentId, meta
+
+  h1 <- submit issuer do exerciseCmd tmCid Mint with to = alice, amount = 100.0
+  h2 <- submit issuer do exerciseCmd tmCid Mint with to = alice, amount = 150.0
+  h3 <- submit issuer do exerciseCmd tmCid Mint with to = alice, amount = 50.0
+
+  factoryCid <- submit issuer do
+    createCmd CIP56TransferFactory with admin = issuer
+
+  let now = time (date 2025 Jan 15) 12 0 0
+  setTime now
+
+  result <- submitMulti [alice] [issuer] do
+    exerciseCmd (toInterfaceContractId @TransferFactory factoryCid) TransferFactory_Transfer with
+      expectedAdmin = issuer
+      transfer = Transfer with
+        sender = alice
+        receiver = bob
+        amount = 250.0
+        instrumentId
+        requestedAt = now
+        executeBefore = addRelTime now (hours 1)
+        inputHoldingCids =
+          [ toInterfaceContractId @Holding h1
+          , toInterfaceContractId @Holding h2
+          , toInterfaceContractId @Holding h3
+          ]
+        meta = emptyMetadata
+      extraArgs = ExtraArgs with context = emptyChoiceContext, meta = emptyMetadata
+
+  case result.output of
+    TransferInstructionResult_Completed receiverHoldings -> do
+      let [bobHoldingI] = receiverHoldings
+      let bobHolding : ContractId CIP56Holding = fromInterfaceContractId bobHoldingI
+      Some bh <- queryContractId bob bobHolding
+      assertMsg "Bob has 250" (bh.amount == 250.0)
+      assertMsg "Bob holding preserves metadata" (bh.meta == meta)
+      assertMsg "Bob holding preserves instrumentId" (bh.instrumentId == instrumentId)
+    _ -> fail "Expected completed transfer"
+
+  case result.senderChangeCids of
+    [changeCidI] -> do
+      let changeCid : ContractId CIP56Holding = fromInterfaceContractId changeCidI
+      Some ch <- queryContractId alice changeCid
+      assertMsg "Alice has 50 change (300 - 250)" (ch.amount == 50.0)
+      assertMsg "Change holding preserves metadata" (ch.meta == meta)
+    _ -> fail "Expected one sender change holding"
+
+  debug "Multi-input transfer test passed!"
+  pure ()
+
+testTransferExactAmount : Script ()
+testTransferExactAmount = script do
+  issuer <- allocateTestParty "issuer"
+  alice  <- allocateTestParty "alice"
+  bob    <- allocateTestParty "bob"
+
+  let instrumentId = InstrumentId with admin = issuer, id = "TEST"
+  let meta = mkMetadata
+        [ ("splice.chainsafe.io/symbol", "TEST")
+        ]
+
+  tmCid <- submit issuer do
+    createCmd CIP56Manager with issuer, instrumentId, meta
 
   aliceHolding <- submit issuer do
-    exerciseCmd tmCid Mint with to = alice, amount = 500.0
+    exerciseCmd tmCid Mint with to = alice, amount = 100.0
 
-  -- Transfer to Bob with no existing holding (None)
-  (bobHolding, aliceChange) <- submit alice do
-    exerciseCmd aliceHolding Transfer with
-      to = bob
-      value = 200.0
-      existingRecipientHolding = None
-      complianceRulesCid = None
-      complianceProofCid = None
+  factoryCid <- submit issuer do
+    createCmd CIP56TransferFactory with admin = issuer
 
-  -- Verify Bob received exactly the transferred amount
-  Some bh <- queryContractId bob bobHolding
-  assertMsg "Bob should have 200" (bh.amount == 200.0)
+  let now = time (date 2025 Jan 15) 12 0 0
+  setTime now
 
-  -- Verify Alice change
-  case aliceChange of
-    Some changeCid -> do
-      Some ah <- queryContractId alice changeCid
-      assertMsg "Alice should have 300" (ah.amount == 300.0)
-    None -> fail "Expected Alice to have change"
+  result <- submitMulti [alice] [issuer] do
+    exerciseCmd (toInterfaceContractId @TransferFactory factoryCid) TransferFactory_Transfer with
+      expectedAdmin = issuer
+      transfer = Transfer with
+        sender = alice
+        receiver = bob
+        amount = 100.0
+        instrumentId
+        requestedAt = now
+        executeBefore = addRelTime now (hours 1)
+        inputHoldingCids = [toInterfaceContractId @Holding aliceHolding]
+        meta = emptyMetadata
+      extraArgs = ExtraArgs with context = emptyChoiceContext, meta = emptyMetadata
 
+  case result.output of
+    TransferInstructionResult_Completed receiverHoldings -> do
+      let [bobHoldingI] = receiverHoldings
+      let bobHolding : ContractId CIP56Holding = fromInterfaceContractId bobHoldingI
+      Some bh <- queryContractId bob bobHolding
+      assertMsg "Bob has 100" (bh.amount == 100.0)
+      assertMsg "Bob holding preserves metadata" (bh.meta == meta)
+      assertMsg "Bob holding preserves instrumentId" (bh.instrumentId == instrumentId)
+    _ -> fail "Expected completed transfer"
+
+  assertMsg "No sender change (exact amount)" (null result.senderChangeCids)
+
+  debug "Exact-amount transfer test passed!"
+  pure ()
+
+testBurnLockedHoldingFails : Script ()
+testBurnLockedHoldingFails = script do
+  issuer <- allocateTestParty "issuer"
+  alice  <- allocateTestParty "alice"
+
+  let instrumentId = InstrumentId with admin = issuer, id = "LOCK"
+  let meta = mkMetadata [("splice.chainsafe.io/symbol", "LOCK")]
+
+  tmCid <- submit issuer do
+    createCmd CIP56Manager with issuer, instrumentId, meta
+
+  holdingCid <- submit issuer do
+    exerciseCmd tmCid Mint with to = alice, amount = 100.0
+
+  let lock = Lock with
+        holders = [alice]
+        expiresAt = None
+        expiresAfter = None
+        context = Some "escrow"
+
+  submit issuer do
+    archiveCmd holdingCid
+
+  lockedCid <- submit issuer do
+    createCmd CIP56Holding with issuer, owner = alice, amount = 100.0, instrumentId, lock = Some lock, meta
+
+  submitMustFail issuer do
+    exerciseCmd tmCid Burn with holdingCid = lockedCid, amount = 50.0
+
+  debug "Burn locked holding correctly rejected!"
+  pure ()
+
+testHoldingInterface : Script ()
+testHoldingInterface = script do
+  issuer <- allocateTestParty "issuer"
+  alice  <- allocateTestParty "alice"
+
+  let instrumentId = InstrumentId with admin = issuer, id = "IF-TEST"
+  let meta = mkMetadata [("splice.chainsafe.io/symbol", "IFT")]
+
+  tmCid <- submit issuer do
+    createCmd CIP56Manager with issuer, instrumentId, meta
+
+  holdingCid <- submit issuer do
+    exerciseCmd tmCid Mint with to = alice, amount = 42.0
+
+  let holdingIfaceCid = toInterfaceContractId @Holding holdingCid
+
+  Some holdingView <- queryInterfaceContractId alice holdingIfaceCid
+  assertMsg "owner via interface" (holdingView.owner == alice)
+  assertMsg "amount via interface" (holdingView.amount == 42.0)
+  assertMsg "instrumentId via interface" (holdingView.instrumentId == instrumentId)
+  assertMsg "lock via interface" (holdingView.lock == None)
+
+  debug "Holding interface test passed!"
   pure ()
