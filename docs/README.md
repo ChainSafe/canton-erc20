@@ -114,4 +114,4 @@ The following documents reference components that have been removed or moved:
 | `dev-setup.md` | Outdated - references removed Go indexer and Node.js middleware |
 | `startup-flow.md` | Outdated - references removed components |
 
-For current setup instructions, see the [canton-middleware Setup Guide](https://github.com/ChainSafe/canton-middleware/blob/main/docs/SETUP_AND_TESTING.md).
+For current setup instructions, see the [Local Interop Testing Guide](https://github.com/ChainSafe/canton-middleware/blob/main/docs/LOCAL_INTEROP_TESTING.md).
