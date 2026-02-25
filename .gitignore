@@ -4,6 +4,9 @@
 .daml/
 *.dar
 
+# Splice pre-built DARs are checked in (external dependency, not build artifacts)
+!daml/splice-dars/*.dar
+
 # DAML package-specific build directories
 */.daml/
 */dist/
