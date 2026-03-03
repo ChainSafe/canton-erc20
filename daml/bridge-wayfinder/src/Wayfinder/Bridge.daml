@@ -13,7 +13,7 @@ import Splice.Api.Token.MetadataV1 (Metadata(..))
 import Splice.Api.Token.HoldingV1 (InstrumentId(..))
 import CIP56.Token (CIP56Holding, getSymbol)
 import CIP56.Config
-import CIP56.Events (MintEvent)
+import CIP56.Events (TokenTransferEvent)
 import Bridge.Contracts
 
 promptInstrumentId : Party -> InstrumentId
@@ -55,7 +55,7 @@ template WayfinderBridgeConfig
           tokenId = "PROMPT"
           createdAt = timestamp
 
-    nonconsuming choice ProcessDepositAndMint : (ContractId CIP56Holding, ContractId MintEvent)
+    nonconsuming choice ProcessDepositAndMint : (ContractId CIP56Holding, ContractId TokenTransferEvent)
       with
         depositCid  : ContractId PendingDeposit
         mappingCid  : ContractId FingerprintMapping
