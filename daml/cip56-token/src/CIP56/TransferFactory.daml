@@ -4,7 +4,7 @@ import Splice.Api.Token.MetadataV1 (Metadata, emptyMetadata)
 import Splice.Api.Token.HoldingV1 (Holding(..), InstrumentId(..))
 import Splice.Api.Token.TransferInstructionV1
 
-import CIP56.Token (CIP56Holding(..))
+import CIP56.Token (CIP56Holding(..), getSymbol)
 import CIP56.Events (TokenTransferEvent(..))
 
 -- | Splice-compliant transfer factory for CIP-56 holdings.
@@ -66,7 +66,7 @@ template CIP56TransferFactory
           fromParty = Some sender
           toParty = Some receiver
           amount
-          tokenSymbol = instrumentId.id
+          tokenSymbol = getSymbol holdingMeta
           eventType = "TRANSFER"
           timestamp = now
           evmTxHash = None

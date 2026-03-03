@@ -377,9 +377,9 @@ testTokenTransferEvents = script do
       userFingerprint = "fp-bob"
       evmDestination = Some "0xdead"
 
-  allEvents2 <- query @TokenTransferEvent issuer
-  assertMsg "three TokenTransferEvents after burn" (length allEvents2 == 3)
-  let burnEvents = filter (\(_, e) -> e.eventType == "BURN") allEvents2
+  allEventsAfterBurn <- query @TokenTransferEvent issuer
+  assertMsg "three TokenTransferEvents after burn" (length allEventsAfterBurn == 3)
+  let burnEvents = filter (\(_, e) -> e.eventType == "BURN") allEventsAfterBurn
   assertMsg "exactly one BURN event" (length burnEvents == 1)
   let [(_, burnEvt)] = burnEvents
   assertMsg "burn: fromParty = Some bob" (burnEvt.fromParty == Some bob)
