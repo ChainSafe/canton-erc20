@@ -50,6 +50,19 @@ template TokenConfig
           userFingerprint
           evmTxHash
 
+        create TokenTransferEvent with
+          issuer
+          fromParty = None
+          toParty = Some recipient
+          amount
+          tokenSymbol = getSymbol meta
+          eventType = "MINT"
+          timestamp = eventTime
+          evmTxHash
+          evmDestination = None
+          userFingerprint = Some userFingerprint
+          auditObservers
+
         pure (holdingCid, eventCid)
 
     nonconsuming choice IssuerBurn : (Optional (ContractId CIP56Holding), ContractId BurnEvent)
@@ -76,6 +89,19 @@ template TokenConfig
           auditObservers = auditObservers
           userFingerprint
           evmDestination
+
+        create TokenTransferEvent with
+          issuer
+          fromParty = Some holding.owner
+          toParty = None
+          amount
+          tokenSymbol = getSymbol meta
+          eventType = "BURN"
+          timestamp = eventTime
+          evmTxHash = None
+          evmDestination
+          userFingerprint = Some userFingerprint
+          auditObservers
 
         pure (remainderCid, eventCid)
 

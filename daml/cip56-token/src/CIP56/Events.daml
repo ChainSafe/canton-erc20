@@ -56,3 +56,35 @@ template BurnEvent
   where
     signatory issuer
     observer burnedFrom, auditObservers
+
+-- =============================================================================
+-- UNIFIED TRANSFER EVENT
+-- =============================================================================
+
+-- | Unified audit event for all token mutations (mint, burn, transfer).
+--
+-- Mirrors ERC-20 Transfer(from, to, value) semantics:
+--   MINT:     fromParty = None,       toParty = Some recipient
+--   BURN:     fromParty = Some owner, toParty = None
+--   TRANSFER: fromParty = Some sender, toParty = Some receiver
+--
+-- Bridge-specific fields are Optional — set only for bridge mints/burns.
+template TokenTransferEvent
+  with
+    issuer          : Party
+    fromParty       : Optional Party    -- None = mint
+    toParty         : Optional Party    -- None = burn
+    amount          : Decimal
+    tokenSymbol     : Text
+    eventType       : Text              -- "MINT" | "BURN" | "TRANSFER"
+    timestamp       : Time
+    evmTxHash       : Optional Text     -- bridge deposit tx hash (mints)
+    evmDestination  : Optional Text     -- bridge withdrawal address (burns)
+    userFingerprint : Optional Text     -- bridge audit trail
+    auditObservers  : [Party]
+  where
+    signatory issuer
+    observer
+      optional [] (\p -> [p]) fromParty,
+      optional [] (\p -> [p]) toParty,
+      auditObservers
