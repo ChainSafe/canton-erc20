@@ -128,7 +128,7 @@ These packages are deployed to Canton Network and **do not** include `daml-scrip
 | Package | Description | Status |
 |---------|-------------|--------|
 | `common` | Shared types (`TokenMeta`, `EvmAddress`, `ChainRef`, `FingerprintAuth`) | Stable |
-| `cip56-token` | CIP-56 compliant token, unified `TokenConfig`, unified `MintEvent`/`BurnEvent` | Stable |
+| `cip56-token` | CIP-56 compliant token, unified `TokenConfig`, `TokenTransferEvent`, `CIP56TransferFactory` | Stable |
 | `bridge-core` | Issuer-centric bridge contracts (`MintCommand`, `WithdrawalRequest`, `WithdrawalEvent`) | Stable |
 | `bridge-wayfinder` | Wayfinder PROMPT token bridge (thin EVM layer delegating to `TokenConfig`) | **Production** |
 
@@ -139,9 +139,9 @@ Test packages include `daml-script` and are **not** deployed to production ledge
 | Package | Tests |
 |---------|-------|
 | `common-tests` | `FingerprintAuthTest` |
-| `cip56-token-tests` | Mint, Transfer (with merge), Lock, Compliance flows |
-| `bridge-core-tests` | Full bridge cycle, audit events, partial burns |
-| `bridge-wayfinder-tests` | E2E Wayfinder flow, fingerprint validation, observer management |
+| `cip56-token-tests` | Mint, burn, transfer (single/multi-input/exact), lock, interface, TokenTransferEvent |
+| `bridge-core-tests` | Full bridge cycle, partial burns |
+| `bridge-wayfinder-tests` | Full cycle, issuer-centric flow, fingerprint validation, multi-user |
 | `integration-tests` | Cross-package integration |
 
 ### Package Dependency Graph
@@ -159,11 +159,16 @@ All tokens -- whether native Canton tokens or EVM-bridged -- share the same core
 
 ```
 TokenConfig (CIP56.Config)
-├── IssuerMint  --> CIP56Manager.Mint + MintEvent
-└── IssuerBurn  --> CIP56Manager.Burn + BurnEvent
+├── IssuerMint  --> CIP56Manager.Mint + TokenTransferEvent (MINT)
+└── IssuerBurn  --> CIP56Manager.Burn + TokenTransferEvent (BURN)
+
+CIP56TransferFactory (CIP56.TransferFactory)
+└── Transfer    --> Archive inputs + Create holdings + TokenTransferEvent (TRANSFER)
 ```
 
-- **`TokenConfig`** holds a `CIP56Manager` reference and token metadata. Every mint produces a `CIP56Holding` and a `MintEvent`; every burn produces a `BurnEvent`. Optional fields (`evmTxHash`, `evmDestination`) distinguish native operations from bridge operations.
+- **`TokenTransferEvent`** is a unified audit event emitted from all three token mutation points (mint, burn, transfer). It mirrors ERC-20's `Transfer(from, to, value)` pattern with `Optional Party` fields: `fromParty = None` for mints, `toParty = None` for burns, both set for transfers. Bridge-specific fields (`evmTxHash`, `evmDestination`, `userFingerprint`) are `Optional` -- set only for bridge mints/burns. The indexer subscribes to this single template for a complete event stream.
+- **`TokenConfig`** holds a `CIP56Manager` reference and token metadata. Every mint produces a `CIP56Holding` and a `TokenTransferEvent`; every burn produces a `TokenTransferEvent`. Optional fields (`evmTxHash`, `evmDestination`) distinguish native operations from bridge operations.
+- **`CIP56TransferFactory`** implements the Splice `TransferFactory` interface for peer-to-peer transfers. It archives sender input holdings, creates receiver and change holdings, and emits a `TokenTransferEvent` with `eventType = "TRANSFER"`.
 - **`WayfinderBridgeConfig`** is a thin EVM layer. It holds a `tokenConfigCid` reference and delegates all minting and burning to `TokenConfig`. The bridge itself only handles EVM-specific concerns: fingerprint registration, deposit validation, and withdrawal initiation.
 
 To add a new bridged token (e.g. USDC), create:
@@ -191,9 +196,8 @@ cd daml/bridge-wayfinder-tests && daml test
 
 | Package | Tests | Coverage |
 |---------|-------|----------|
-| `cip56-token-tests` | `test`, `testTransferWithMerge`, `testTransferNoExisting` | Mint, Transfer (with/without merge), Lock, Compliance |
-| `bridge-core-tests` | `testBridgeFlow`, `testAuditObserverVisibility`, `testPartialBurnWithAuditEvent`, `testBasicToken` | Full bridge cycle, audit events, partial burns |
-| `bridge-wayfinder-tests` | `testIssuerCentricBridge`, `testAuditObserverManagement`, `testFingerprintMismatchRejected`, `testMultipleUsers` | E2E flow, observer management, fingerprint validation, multi-user |
+| `cip56-token-tests` | `testMintAndBurn`, `testTransferViaFactory`, `testTransferMultipleInputs`, `testTransferExactAmount`, `testBurnLockedHoldingFails`, `testHoldingInterface`, `testTokenTransferEvents` | Mint, burn, transfer (single/multi-input/exact), locked holding rejection, Holding interface, unified TokenTransferEvent for all 3 paths |
+| `bridge-wayfinder-tests` | `testFullCycle`, `testIssuerCentricBridge`, `testFingerprintMismatchRejected`, `testMultipleUsers` | Full bridge cycle, issuer-centric flow, fingerprint validation, multi-user |
 
 ## EVM Bridge
 
