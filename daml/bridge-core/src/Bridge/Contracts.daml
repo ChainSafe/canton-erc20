@@ -13,7 +13,7 @@ module Bridge.Contracts where
 import Common.Types
 import CIP56.Token (CIP56Holding)
 import CIP56.Config
-import CIP56.Events (MintEvent, BurnEvent)
+import CIP56.Events (TokenTransferEvent)
 
 -- =============================================================================
 -- DEPOSIT FLOW: EVM → Canton (Issuer-Controlled)
@@ -45,7 +45,7 @@ template MintCommand
     observer recipient, auditObservers
     
     -- | Execute the mint via TokenConfig and create audit event
-    choice ExecuteMint : (ContractId CIP56Holding, ContractId CIP56.Events.MintEvent)
+    choice ExecuteMint : (ContractId CIP56Holding, ContractId CIP56.Events.TokenTransferEvent)
       with
         timestamp : Time
       controller issuer
@@ -86,7 +86,7 @@ template WithdrawalRequest
     observer userParty, auditObservers
     
     -- | Process the withdrawal: burn tokens and create events
-    choice ProcessWithdrawal : (ContractId WithdrawalEvent, ContractId BurnEvent)
+    choice ProcessWithdrawal : (ContractId WithdrawalEvent, ContractId TokenTransferEvent)
       with
         timestamp : Time
       controller issuer

@@ -24,7 +24,7 @@ template TokenConfig
     signatory issuer
     observer auditObservers
 
-    nonconsuming choice IssuerMint : (ContractId CIP56Holding, ContractId MintEvent)
+    nonconsuming choice IssuerMint : (ContractId CIP56Holding, ContractId TokenTransferEvent)
       with
         recipient : Party
         amount : Decimal
@@ -39,20 +39,22 @@ template TokenConfig
           to = recipient
           amount = amount
 
-        eventCid <- create MintEvent with
+        eventCid <- create TokenTransferEvent with
           issuer
-          recipient
+          fromParty = None
+          toParty = Some recipient
           amount
-          holdingCid
           tokenSymbol = getSymbol meta
+          eventType = "MINT"
           timestamp = eventTime
-          auditObservers = auditObservers
-          userFingerprint
           evmTxHash
+          evmDestination = None
+          userFingerprint = Some userFingerprint
+          auditObservers
 
         pure (holdingCid, eventCid)
 
-    nonconsuming choice IssuerBurn : (Optional (ContractId CIP56Holding), ContractId BurnEvent)
+    nonconsuming choice IssuerBurn : (Optional (ContractId CIP56Holding), ContractId TokenTransferEvent)
       with
         holdingCid : ContractId CIP56Holding
         amount : Decimal
@@ -66,16 +68,18 @@ template TokenConfig
 
         remainderCid <- exercise tokenManagerCid Burn with holdingCid, amount
 
-        eventCid <- create BurnEvent with
+        eventCid <- create TokenTransferEvent with
           issuer
-          burnedFrom = holding.owner
+          fromParty = Some holding.owner
+          toParty = None
           amount
-          remainderCid
           tokenSymbol = getSymbol meta
+          eventType = "BURN"
           timestamp = eventTime
-          auditObservers = auditObservers
-          userFingerprint
+          evmTxHash = None
           evmDestination
+          userFingerprint = Some userFingerprint
+          auditObservers
 
         pure (remainderCid, eventCid)
 
