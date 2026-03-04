@@ -10,7 +10,9 @@
 
 module Bridge.Contracts where
 
+import qualified DA.TextMap as TM
 import Common.Types
+import Splice.Api.Token.MetadataV1 (Metadata(..))
 import CIP56.Token (CIP56Holding)
 import CIP56.Config
 import CIP56.Events (TokenTransferEvent)
@@ -57,8 +59,10 @@ template MintCommand
           recipient = recipient
           amount = amount
           eventTime = timestamp
-          userFingerprint = fingerprint
-          evmTxHash = Some evmTxHash
+          eventMeta = Some (Metadata (TM.fromList
+            [ ("bridge.externalTxId", evmTxHash)
+            , ("bridge.fingerprint", fingerprint)
+            ]))
 
 -- =============================================================================
 -- WITHDRAWAL FLOW: Canton → EVM (Issuer-Controlled)
@@ -102,8 +106,10 @@ template WithdrawalRequest
           holdingCid = holdingCid
           amount = amount
           eventTime = timestamp
-          userFingerprint = fingerprint
-          evmDestination = Some evmDestination.value
+          eventMeta = Some (Metadata (TM.fromList
+            [ ("bridge.externalAddress", evmDestination.value)
+            , ("bridge.fingerprint", fingerprint)
+            ]))
         
         -- Create withdrawal event for middleware
         withdrawalCid <- create WithdrawalEvent with

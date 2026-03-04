@@ -5,11 +5,15 @@ module Wayfinder.Test where
 import Daml.Script
 import DA.Time (time)
 import DA.Date (date, Month(..))
+import DA.Optional (fromSome)
+import qualified DA.TextMap as TM
 import Common.Types
 import Common.FingerprintAuth (FingerprintMapping(..))
+import Splice.Api.Token.MetadataV1 (Metadata(..))
 import Splice.Api.Token.HoldingV1 (InstrumentId(..))
 import CIP56.Token
 import CIP56.Config (TokenConfig(..), IssuerMint(..))
+import CIP56.Events (TokenTransferEvent(..))
 import Bridge.Contracts
 import Wayfinder.Bridge
 
@@ -90,8 +94,9 @@ testIssuerCentricBridge = script do
 
   Some mintEvent <- queryContractId issuer mintEventCid
   assertMsg "Mint event amount correct" (mintEvent.amount == 100.0)
-  assertMsg "Mint event tokenSymbol correct" (mintEvent.tokenSymbol == "PROMPT")
-  assertMsg "Mint event evmTxHash set" (mintEvent.evmTxHash == Some "0xAliceDepositTx...")
+  assertMsg "Mint event instrumentId correct" (mintEvent.instrumentId == instrumentId)
+  let mintMetaValues = case fromSome mintEvent.meta of Metadata v -> v
+  assertMsg "Mint event externalTxId set" (TM.lookup "bridge.externalTxId" mintMetaValues == Some "0xAliceDepositTx...")
 
   Some mintEventFromAuditor <- queryContractId auditor mintEventCid
   assertMsg "Auditor can see mint event" (mintEventFromAuditor.amount == 100.0)
@@ -107,8 +112,10 @@ testIssuerCentricBridge = script do
       recipient = bob
       amount = 40.0
       eventTime = bobMintTime
-      userFingerprint = bobFingerprint
-      evmTxHash = Some "admin-mint"
+      eventMeta = Some (Metadata (TM.fromList
+        [ ("bridge.externalTxId", "admin-mint")
+        , ("bridge.fingerprint", bobFingerprint)
+        ]))
 
   Some bobHolding <- queryContractId bob bobHoldingCid
   assertMsg "Bob should have 40.0 PROMPT" (bobHolding.amount == 40.0)
@@ -135,7 +142,8 @@ testIssuerCentricBridge = script do
 
   Some burnEvent <- queryContractId issuer burnEventCid
   assertMsg "Burn event amount correct" (burnEvent.amount == 40.0)
-  assertMsg "Burn event evmDestination set" (burnEvent.evmDestination == Some "0xBobEthWallet...")
+  let burnMetaValues = case fromSome burnEvent.meta of Metadata v -> v
+  assertMsg "Burn event externalAddress set" (TM.lookup "bridge.externalAddress" burnMetaValues == Some "0xBobEthWallet...")
 
   Some burnEventFromAuditor <- queryContractId auditor burnEventCid
   assertMsg "Auditor can see burn event" (burnEventFromAuditor.amount == 40.0)

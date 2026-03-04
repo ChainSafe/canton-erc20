@@ -1,9 +1,11 @@
 module CIP56.Script where
 
 import Daml.Script
+import DA.Optional (isSome, isNone)
 import DA.Time (time, hours, addRelTime)
 import DA.Date (date, Month(..))
-import Splice.Api.Token.MetadataV1 (ExtraArgs(..), emptyMetadata, emptyChoiceContext)
+import qualified DA.TextMap as TM
+import Splice.Api.Token.MetadataV1 (Metadata(..), ExtraArgs(..), emptyMetadata, emptyChoiceContext)
 import Splice.Api.Token.HoldingV1 (Holding(..), InstrumentId(..), Lock(..))
 import Splice.Api.Token.TransferInstructionV1
 
@@ -309,17 +311,21 @@ testTokenTransferEvents = script do
       meta
       auditObservers = []
 
-  -- Step 1: Mint via TokenConfig → should produce TokenTransferEvent with eventType = "MINT"
+  -- Step 1: Mint via TokenConfig → should produce TokenTransferEvent (mint = fromParty None)
   let now = time (date 2025 Jun 1) 12 0 0
   setTime now
+
+  let mintMeta = Some (Metadata (TM.fromList
+        [ ("bridge.externalTxId", "0xabc123")
+        , ("bridge.fingerprint", "fp-alice")
+        ]))
 
   (holdingCid, _mintEventCid) <- submit issuer do
     exerciseCmd configCid IssuerMint with
       recipient = alice
       amount = 100.0
       eventTime = now
-      userFingerprint = "fp-alice"
-      evmTxHash = Some "0xabc123"
+      eventMeta = mintMeta
 
   mintEvents <- query @TokenTransferEvent issuer
   assertMsg "exactly one TokenTransferEvent after mint" (length mintEvents == 1)
@@ -327,13 +333,10 @@ testTokenTransferEvents = script do
   assertMsg "mint: fromParty = None" (mintEvt.fromParty == None)
   assertMsg "mint: toParty = Some alice" (mintEvt.toParty == Some alice)
   assertMsg "mint: amount = 100" (mintEvt.amount == 100.0)
-  assertMsg "mint: eventType = MINT" (mintEvt.eventType == "MINT")
-  assertMsg "mint: tokenSymbol = EVT" (mintEvt.tokenSymbol == "EVT")
-  assertMsg "mint: evmTxHash set" (mintEvt.evmTxHash == Some "0xabc123")
-  assertMsg "mint: evmDestination = None" (mintEvt.evmDestination == None)
-  assertMsg "mint: userFingerprint set" (mintEvt.userFingerprint == Some "fp-alice")
+  assertMsg "mint: instrumentId matches" (mintEvt.instrumentId == instrumentId)
+  assertMsg "mint: meta set" (mintEvt.meta == mintMeta)
 
-  -- Step 2: Transfer via factory → should produce TokenTransferEvent with eventType = "TRANSFER"
+  -- Step 2: Transfer via factory → should produce TokenTransferEvent (both parties set)
   factoryCid <- submit issuer do
     createCmd CIP56TransferFactory with admin = issuer, auditObservers = []
 
@@ -353,43 +356,44 @@ testTokenTransferEvents = script do
 
   allEvents <- query @TokenTransferEvent issuer
   assertMsg "two TokenTransferEvents after transfer" (length allEvents == 2)
-  let transferEvents = filter (\(_, e) -> e.eventType == "TRANSFER") allEvents
+  -- Transfer events have both fromParty and toParty set
+  let transferEvents = filter (\(_, e) -> isSome e.fromParty && isSome e.toParty) allEvents
   assertMsg "exactly one TRANSFER event" (length transferEvents == 1)
   let [(_, xferEvt)] = transferEvents
   assertMsg "transfer: fromParty = Some alice" (xferEvt.fromParty == Some alice)
   assertMsg "transfer: toParty = Some bob" (xferEvt.toParty == Some bob)
   assertMsg "transfer: amount = 60" (xferEvt.amount == 60.0)
-  assertMsg "transfer: tokenSymbol = EVT" (xferEvt.tokenSymbol == "EVT")
-  assertMsg "transfer: evmTxHash = None" (xferEvt.evmTxHash == None)
-  assertMsg "transfer: evmDestination = None" (xferEvt.evmDestination == None)
-  assertMsg "transfer: userFingerprint = None" (xferEvt.userFingerprint == None)
+  assertMsg "transfer: instrumentId matches" (xferEvt.instrumentId == instrumentId)
+  assertMsg "transfer: meta = None" (xferEvt.meta == None)
 
-  -- Step 3: Burn via TokenConfig → should produce TokenTransferEvent with eventType = "BURN"
+  -- Step 3: Burn via TokenConfig → should produce TokenTransferEvent (burn = toParty None)
   -- Bob has 60 from the transfer, get his holding
   bobHoldings <- query @CIP56Holding bob
   let [(bobHoldingCid, _)] = bobHoldings
+
+  let burnMeta = Some (Metadata (TM.fromList
+        [ ("bridge.externalAddress", "0xdead")
+        , ("bridge.fingerprint", "fp-bob")
+        ]))
 
   (_remainderCid, _burnEventCid) <- submit issuer do
     exerciseCmd configCid IssuerBurn with
       holdingCid = bobHoldingCid
       amount = 25.0
       eventTime = now
-      userFingerprint = "fp-bob"
-      evmDestination = Some "0xdead"
+      eventMeta = burnMeta
 
   allEventsAfterBurn <- query @TokenTransferEvent issuer
   assertMsg "three TokenTransferEvents after burn" (length allEventsAfterBurn == 3)
-  let burnEvents = filter (\(_, e) -> e.eventType == "BURN") allEventsAfterBurn
+  -- Burn events have toParty = None
+  let burnEvents = filter (\(_, e) -> isNone e.toParty) allEventsAfterBurn
   assertMsg "exactly one BURN event" (length burnEvents == 1)
   let [(_, burnEvt)] = burnEvents
   assertMsg "burn: fromParty = Some bob" (burnEvt.fromParty == Some bob)
   assertMsg "burn: toParty = None" (burnEvt.toParty == None)
   assertMsg "burn: amount = 25" (burnEvt.amount == 25.0)
-  assertMsg "burn: eventType = BURN" (burnEvt.eventType == "BURN")
-  assertMsg "burn: tokenSymbol = EVT" (burnEvt.tokenSymbol == "EVT")
-  assertMsg "burn: evmTxHash = None" (burnEvt.evmTxHash == None)
-  assertMsg "burn: evmDestination set" (burnEvt.evmDestination == Some "0xdead")
-  assertMsg "burn: userFingerprint set" (burnEvt.userFingerprint == Some "fp-bob")
+  assertMsg "burn: instrumentId matches" (burnEvt.instrumentId == instrumentId)
+  assertMsg "burn: meta set" (burnEvt.meta == burnMeta)
 
   debug "TokenTransferEvent test passed!"
   pure ()

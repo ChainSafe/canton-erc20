@@ -3,12 +3,14 @@ module Bridge.Script where
 import Daml.Script
 import DA.Time (time)
 import DA.Date (date, Month(..))
+import DA.Optional (fromSome)
 import qualified DA.TextMap as TM
 import Common.Types
 import Splice.Api.Token.MetadataV1 (Metadata(..))
 import Splice.Api.Token.HoldingV1 (InstrumentId(..))
 import CIP56.Token
 import CIP56.Config
+import CIP56.Events (TokenTransferEvent(..))
 import Bridge.Contracts
 
 testInstrumentId : Party -> InstrumentId
@@ -66,8 +68,10 @@ testBridgeFlow = script do
 
   Some mintEvent <- queryContractId issuer mintEventCid
   assertMsg "Mint event amount correct" (mintEvent.amount == 1000.0)
-  assertMsg "Mint event recipient correct" (mintEvent.recipient == alice)
-  assertMsg "Mint event evmTxHash correct" (mintEvent.evmTxHash == Some evmTxHash)
+  assertMsg "Mint event toParty correct" (mintEvent.toParty == Some alice)
+  let mintMeta = fromSome mintEvent.meta
+  let mintMetaValues = case mintMeta of Metadata v -> v
+  assertMsg "Mint event externalTxId correct" (TM.lookup "bridge.externalTxId" mintMetaValues == Some evmTxHash)
 
   debug ">>> Deposit flow complete"
 
@@ -94,7 +98,9 @@ testBridgeFlow = script do
 
   Some burnEvent <- queryContractId issuer burnEventCid
   assertMsg "Burn event amount correct" (burnEvent.amount == 500.0)
-  assertMsg "Burn event evmDestination set" (burnEvent.evmDestination == Some evmDestination.value)
+  let burnMeta = fromSome burnEvent.meta
+  let burnMetaValues = case burnMeta of Metadata v -> v
+  assertMsg "Burn event externalAddress set" (TM.lookup "bridge.externalAddress" burnMetaValues == Some evmDestination.value)
 
   debug ">>> Withdrawal initiated"
 
@@ -209,11 +215,11 @@ testPartialBurnWithAuditEvent = script do
   Some burnEvent <- queryContractId issuer burnEventCid
   assertMsg "Burn amount correct" (burnEvent.amount == 400.0)
 
-  case burnEvent.remainderCid of
-    Some remainderCid -> do
-      Some remainder <- queryContractId alice remainderCid
-      assertMsg "Remainder amount correct" (remainder.amount == 600.0)
-    None -> fail "Expected remainder for partial burn"
+  -- Verify Alice has a remainder holding with 600 DEMO after partial burn
+  aliceHoldings <- query @CIP56Holding alice
+  assertMsg "Alice should have one remaining holding" (length aliceHoldings == 1)
+  let [(_, remainder)] = aliceHoldings
+  assertMsg "Remainder amount correct" (remainder.amount == 600.0)
 
   debug "Partial burn test passed!"
   pure ()

@@ -2,10 +2,14 @@
 --
 -- This module contains the unified TokenTransferEvent template for ALL
 -- token mutations (mint, burn, transfer). Mirrors ERC-20 Transfer(from, to, value)
--- semantics. Bridge-specific fields are Optional — set only for bridge
--- operations (deposits/withdrawals) and None for native/peer-to-peer operations.
+-- semantics. Bridge context is stored in the optional meta field using
+-- namespaced keys (bridge.externalTxId, bridge.externalAddress, bridge.fingerprint).
+-- Native/peer-to-peer transfers set meta = None.
 
 module CIP56.Events where
+
+import Splice.Api.Token.MetadataV1 (Metadata)
+import Splice.Api.Token.HoldingV1 (InstrumentId)
 
 -- | Unified audit event for all token mutations (mint, burn, transfer).
 --
@@ -14,20 +18,18 @@ module CIP56.Events where
 --   BURN:     fromParty = Some owner, toParty = None
 --   TRANSFER: fromParty = Some sender, toParty = Some receiver
 --
--- Bridge-specific fields are Optional — set only for bridge mints/burns.
+-- Event type is derived from fromParty/toParty (no explicit field).
+-- Bridge context (tx hash, destination, fingerprint) is stored in meta.
 template TokenTransferEvent
   with
-    issuer          : Party
-    fromParty       : Optional Party    -- None = mint
-    toParty         : Optional Party    -- None = burn
-    amount          : Decimal
-    tokenSymbol     : Text
-    eventType       : Text              -- "MINT" | "BURN" | "TRANSFER"
-    timestamp       : Time
-    evmTxHash       : Optional Text     -- bridge deposit tx hash (mints)
-    evmDestination  : Optional Text     -- bridge withdrawal address (burns)
-    userFingerprint : Optional Text     -- bridge audit trail
-    auditObservers  : [Party]
+    issuer         : Party
+    fromParty      : Optional Party    -- None = mint
+    toParty        : Optional Party    -- None = burn
+    amount         : Decimal
+    instrumentId   : InstrumentId      -- canonical Splice instrument identifier
+    timestamp      : Time
+    meta           : Optional Metadata -- bridge context (or None for native ops)
+    auditObservers : [Party]
   where
     signatory issuer
     observer
