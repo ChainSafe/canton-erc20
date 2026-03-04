@@ -69,8 +69,10 @@ template WayfinderBridgeConfig
           recipient = receipt.recipient
           amount = receipt.amount
           eventTime = timestamp
-          userFingerprint = receipt.fingerprint
-          evmTxHash = Some receipt.evmTxHash
+          eventMeta = Some (Metadata (TM.fromList
+            [ ("bridge.externalTxId", receipt.evmTxHash)
+            , ("bridge.fingerprint", receipt.fingerprint)
+            ]))
 
     nonconsuming choice InitiateWithdrawal : ContractId WithdrawalRequest
       with

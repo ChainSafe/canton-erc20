@@ -29,8 +29,7 @@ template TokenConfig
         recipient : Party
         amount : Decimal
         eventTime : Time
-        userFingerprint : Text
-        evmTxHash : Optional Text
+        eventMeta : Optional Metadata
       controller issuer
       do
         assertMsg "amount must be positive" (amount > 0.0)
@@ -44,12 +43,9 @@ template TokenConfig
           fromParty = None
           toParty = Some recipient
           amount
-          tokenSymbol = getSymbol meta
-          eventType = "MINT"
+          instrumentId
           timestamp = eventTime
-          evmTxHash
-          evmDestination = None
-          userFingerprint = Some userFingerprint
+          meta = eventMeta
           auditObservers
 
         pure (holdingCid, eventCid)
@@ -59,8 +55,7 @@ template TokenConfig
         holdingCid : ContractId CIP56Holding
         amount : Decimal
         eventTime : Time
-        userFingerprint : Text
-        evmDestination : Optional Text
+        eventMeta : Optional Metadata
       controller issuer
       do
         assertMsg "amount must be positive" (amount > 0.0)
@@ -73,12 +68,9 @@ template TokenConfig
           fromParty = Some holding.owner
           toParty = None
           amount
-          tokenSymbol = getSymbol meta
-          eventType = "BURN"
+          instrumentId
           timestamp = eventTime
-          evmTxHash = None
-          evmDestination
-          userFingerprint = Some userFingerprint
+          meta = eventMeta
           auditObservers
 
         pure (remainderCid, eventCid)
