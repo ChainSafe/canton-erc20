@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * Wayfinder Bridge Test Interface
  * JavaScript logic for interacting with CantonBridge on Sepolia
