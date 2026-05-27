@@ -1,0 +1,62 @@
+canton-erc20
+Copyright 2026 ChainSafe Systems, Inc.
+
+This product includes software developed by ChainSafe Systems, Inc.
+(https://chainsafe.io).
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+================================================================================
+Third-Party Software
+================================================================================
+
+This product bundles or depends on third-party software with the following
+licenses.
+
+--------------------------------------------------------------------------------
+ethers.js (ethereum/web/ethers.min.js, bundled)
+Copyright (c) 2016-present Richard Moore <me@ricmoo.com>.
+License: MIT
+Source: https://github.com/ethers-io/ethers.js
+
+--------------------------------------------------------------------------------
+OpenZeppelin Contracts (ethereum/lib/openzeppelin-contracts, as a build-time
+dependency via Foundry submodule)
+Copyright (c) 2016-present Zeppelin Group Ltd and contributors.
+License: MIT
+Source: https://github.com/OpenZeppelin/openzeppelin-contracts
+
+--------------------------------------------------------------------------------
+forge-std (ethereum/lib/forge-std, as a build-time dependency via Foundry
+submodule)
+Copyright (c) Foundry contributors.
+License: MIT and Apache-2.0 (dual-licensed)
+Source: https://github.com/foundry-rs/forge-std
+
+--------------------------------------------------------------------------------
+Daml SDK (build-time dependency for compiling Daml contracts under daml/)
+Copyright Digital Asset (Switzerland) GmbH and/or its affiliates.
+License: Apache-2.0
+Source: https://github.com/digital-asset/daml
+
+--------------------------------------------------------------------------------
+Splice Token Standard libraries (splice-api-token-*, build-time Daml
+dependencies)
+Copyright Digital Asset (Switzerland) GmbH and/or its affiliates.
+License: Apache-2.0
+Source: https://github.com/hyperledger-labs/splice
+
+--------------------------------------------------------------------------------
+
+For the complete list of transitive dependencies and their licenses, see the
+upstream repositories of each dependency.
