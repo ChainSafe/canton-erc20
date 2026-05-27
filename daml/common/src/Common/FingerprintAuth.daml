@@ -1,3 +1,5 @@
+-- SPDX-License-Identifier: Apache-2.0
+
 -- | Issuer-Centric Fingerprint Resolution for DAML SDK 3.4.x
 --
 -- This module enables EVM→Canton transfers using Canton party fingerprints.

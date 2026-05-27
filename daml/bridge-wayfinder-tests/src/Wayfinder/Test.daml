@@ -1,3 +1,5 @@
+-- SPDX-License-Identifier: Apache-2.0
+
 -- | Wayfinder Bridge Tests - Unified Token Architecture (Splice-compliant)
 
 module Wayfinder.Test where

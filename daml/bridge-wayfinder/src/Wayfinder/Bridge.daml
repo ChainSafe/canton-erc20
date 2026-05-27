@@ -1,3 +1,5 @@
+-- SPDX-License-Identifier: Apache-2.0
+
 -- | Wayfinder Bridge - EVM Bridge Layer
 --
 -- Thin EVM bridge layer that delegates mint/burn to TokenConfig.

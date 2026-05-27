@@ -1,3 +1,5 @@
+-- SPDX-License-Identifier: Apache-2.0
+
 -- | Wayfinder Script - Simple smoke test for issuer-centric bridge
 
 module Wayfinder.Script where

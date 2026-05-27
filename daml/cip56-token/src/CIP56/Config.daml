@@ -1,3 +1,5 @@
+-- SPDX-License-Identifier: Apache-2.0
+
 -- | Unified Token Configuration
 --
 -- Holds the CIP56Manager reference and Splice-standard metadata.
