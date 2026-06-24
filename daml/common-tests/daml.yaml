@@ -10,4 +10,4 @@ dependencies:
   - daml-stdlib
   - daml-script
 data-dependencies:
-  - ../common/.daml/dist/common-2.0.0.dar
+  - ../common/.daml/dist/common-2.1.0.dar
