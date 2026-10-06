@@ -1,3 +1,5 @@
+-- SPDX-License-Identifier: Apache-2.0
+
 -- | Test script for Issuer-Centric Fingerprint Resolution
 --
 -- Demonstrates the complete flow where ISSUER controls everything.

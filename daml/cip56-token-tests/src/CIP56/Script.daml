@@ -1,3 +1,5 @@
+-- SPDX-License-Identifier: Apache-2.0
+
 module CIP56.Script where
 
 import Daml.Script

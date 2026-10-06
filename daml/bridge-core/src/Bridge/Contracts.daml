@@ -1,3 +1,5 @@
+-- SPDX-License-Identifier: Apache-2.0
+
 -- | Bridge Contracts for Issuer-Centric Canton-EVM Bridge
 --
 -- In the issuer-centric model:
