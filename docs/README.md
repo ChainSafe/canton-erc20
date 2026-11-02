@@ -97,8 +97,8 @@ All tokens implement the Canton Improvement Proposal 56 standard:
 
 All tokens (native or bridged) use the same core templates:
 
-- **`TokenConfig`** (in `CIP56.Config`) -- holds a `CIP56Manager` reference and token metadata. Provides `IssuerMint` and `IssuerBurn` choices that produce unified `MintEvent`/`BurnEvent` audit trails. Optional fields (`evmTxHash`, `evmDestination`) distinguish native operations from bridge operations.
-- **`MintEvent`/`BurnEvent`** (in `CIP56.Events`) -- unified audit events for all token operations.
+- **`TokenConfig`** (in `CIP56.Config`) -- holds a `CIP56Manager` reference and token metadata. Provides `IssuerMint` and `IssuerBurn` choices that each emit a `TokenTransferEvent`. Bridge operations pass chain details, such as the EVM transaction hash, in the optional `eventMeta`.
+- **`TokenTransferEvent`** (in `CIP56.Events`) -- one audit event for every mint, burn and transfer, mirroring ERC-20 `Transfer(from, to, value)`.
 - **`WayfinderBridgeConfig`** -- a thin EVM bridge layer. It holds a `tokenConfigCid` reference and delegates all minting and burning to `TokenConfig`. The bridge only handles EVM-specific concerns (fingerprint registration, deposit validation, withdrawal initiation).
 
 To add a new bridged token, create a new `TokenConfig` instance with its own `CIP56Manager` and metadata, then create a bridge config module that holds a reference to that `TokenConfig`. The core mint/burn/event logic is shared and identical for every token.
