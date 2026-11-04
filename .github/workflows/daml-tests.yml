@@ -1,0 +1,62 @@
+name: Daml tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  daml:
+    name: Build and test Daml packages
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Daml Script tests run on the JVM.
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Daml SDK 3.4.8
+        run: |
+          curl -sSL https://get.daml.com/ | sh -s -- 3.4.8
+          echo "$HOME/.daml/bin" >> "$GITHUB_PATH"
+
+      - name: Build
+        run: ./scripts/build-all.sh --daml-only
+
+      - name: Package IDs
+        run: |
+          {
+            echo "### Package IDs"
+            echo
+            echo "| Package | Version | Package ID |"
+            echo "|---|---|---|"
+            for p in common cip56-token bridge-core bridge-wayfinder; do
+              dar=$(ls daml/$p/.daml/dist/$p-*.dar)
+              ver=$(basename "$dar" .dar); ver=${ver#$p-}
+              echo "| \`$p\` | $ver | \`$(daml damlc inspect-dar --json "$dar" | jq -r .main_package_id)\` |"
+            done
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Test
+        run: |
+          set -o pipefail
+          ./scripts/test-all.sh --daml-only --verbose 2>&1 | tee test.log
+          {
+            echo "### Daml Script results"
+            echo
+            echo "Passed: $(grep -cE ': ok,' test.log)  Failed: $(grep -ciE ': failed' test.log || true)"
+            echo
+            echo '```'
+            grep -E ': (ok,|failed)' test.log || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
