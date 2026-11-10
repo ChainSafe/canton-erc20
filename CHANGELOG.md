@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+- `docs/E2E-TESTNET-SETUP.md`, `ethereum/scripts/e2e-test.sh` and the `ethereum/web/` demo UI. They targeted an
+  older Sepolia test deployment; end-to-end testing now lives in canton-middleware.
+
 ### Added
 - **EVM Bridge (Solidity)** - `ethereum/` directory:
   - `CantonBridge.sol` - Main bridge contract with deposit/withdraw

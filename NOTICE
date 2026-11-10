@@ -24,12 +24,6 @@ This product bundles or depends on third-party software with the following
 licenses.
 
 --------------------------------------------------------------------------------
-ethers.js (ethereum/web/ethers.min.js, bundled)
-Copyright (c) 2016-present Richard Moore <me@ricmoo.com>.
-License: MIT
-Source: https://github.com/ethers-io/ethers.js
-
---------------------------------------------------------------------------------
 OpenZeppelin Contracts (ethereum/lib/openzeppelin-contracts, as a build-time
 dependency via Foundry submodule)
 Copyright (c) 2016-present Zeppelin Group Ltd and contributors.

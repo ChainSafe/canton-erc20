@@ -68,11 +68,9 @@ canton-erc20/
 │   │   ├── CantonBridge.sol            # Main bridge contract
 │   │   └── TokenRegistry.sol          # Token registration
 │   ├── script/                         # Foundry deployment scripts
-│   ├── test/                           # Solidity tests
-│   └── web/                            # Bridge web UI
+│   └── test/                           # Solidity tests
 │
 ├── docs/                               # Documentation
-│   ├── E2E-TESTNET-SETUP.md            # End-to-end testing guide
 │   └── DAML_ARCHITECTURE_PROPOSAL.md   # Technical design document
 ├── CHANGELOG.md                        # Version history
 └── README.md                           # This file
@@ -212,14 +210,9 @@ See [ethereum/README.md](ethereum/README.md) for contract details.
 
 ## E2E Testing
 
-For full end-to-end testing with Ethereum integration, see:
-
-**[docs/E2E-TESTNET-SETUP.md](docs/E2E-TESTNET-SETUP.md)** - Complete guide covering:
-- Canton Network quickstart setup
-- EVM contract deployment (Sepolia)
-- Middleware configuration
-- Deposit/withdrawal testing
-- Troubleshooting
+End-to-end tests of the full stack (Canton, Ethereum and the middleware) live in the
+[canton-middleware](https://github.com/ChainSafe/canton-middleware) repository. See
+[Get started](https://chainsafe.github.io/canton-middleware/get-started) in its documentation.
 
 ## Security & Privacy
 
@@ -236,7 +229,6 @@ All contracts implement Canton privacy best practices:
 | Document | Description |
 |----------|-------------|
 | [CHANGELOG.md](CHANGELOG.md) | Version history and migration guides |
-| [E2E Testnet Setup](docs/E2E-TESTNET-SETUP.md) | Full end-to-end testing guide |
 | [Architecture Proposal](docs/DAML_ARCHITECTURE_PROPOSAL.md) | Technical design and roadmap |
 | [EVM Bridge](ethereum/README.md) | Solidity contracts documentation |
 
